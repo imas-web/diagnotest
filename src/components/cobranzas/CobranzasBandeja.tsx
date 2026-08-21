@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ControlCard } from "@/components/ui/ControlCard";
+
+const PAGINA = 30;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>;
@@ -20,6 +22,9 @@ export function CobranzasBandeja({ controles }: { controles: AnyRecord[] }) {
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [busqueda, setBusqueda] = useState("");
   const [fecha, setFecha] = useState("");
+  // Cuántas tarjetas se renderizan. Renderizar cientos de tarjetas de una traba
+  // el navegador; se muestran de a tandas con "Mostrar más".
+  const [limite, setLimite] = useState(PAGINA);
 
   // Filtra por texto (cadete / veterinaria / código) y por fecha operativa.
   const filtrados = useMemo(() => {
@@ -33,26 +38,37 @@ export function CobranzasBandeja({ controles }: { controles: AnyRecord[] }) {
     });
   }, [controles, busqueda, fecha]);
 
-  // Lista plana ordenada (para "Todos" y "Urgentes primero").
-  const planos = useMemo(() => {
+  // Al cambiar el filtro/búsqueda/fecha se vuelve a la primera tanda.
+  useEffect(() => { setLimite(PAGINA); }, [busqueda, fecha, filtro]);
+
+  // Solo se renderiza hasta `limite`. El orden/agrupación se hace ANTES de
+  // recortar, así "Mostrar más" trae los siguientes según el criterio elegido.
+  const ordenados = useMemo(() => {
     const arr = [...filtrados];
     if (filtro === "urgentes") {
       arr.sort((a, b) => Number(esUrgente(b)) - Number(esUrgente(a)));
+    } else if (filtro === "personal") {
+      arr.sort((a, b) => String(a.retiro?.personal?.nombre ?? "~").localeCompare(String(b.retiro?.personal?.nombre ?? "~"), "es"));
     }
     return arr;
   }, [filtrados, filtro]);
 
-  // Agrupación (para "Por personal").
+  const visibles = useMemo(() => ordenados.slice(0, limite), [ordenados, limite]);
+
+  // Lista plana ordenada (para "Todos" y "Urgentes primero").
+  const planos = visibles;
+
+  // Agrupación (para "Por personal") sobre lo visible.
   const grupos = useMemo(() => {
     if (filtro !== "personal") return null;
     const map = new Map<string, AnyRecord[]>();
-    for (const c of filtrados) {
+    for (const c of visibles) {
       const k = c.retiro?.personal?.nombre ?? "Sin asignar";
       if (!map.has(k)) map.set(k, []);
       map.get(k)!.push(c);
     }
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], "es"));
-  }, [filtrados, filtro]);
+    return Array.from(map.entries());
+  }, [visibles, filtro]);
 
   return (
     <div className="space-y-4">
@@ -113,6 +129,22 @@ export function CobranzasBandeja({ controles }: { controles: AnyRecord[] }) {
               ))}
             </div>
           )}
+
+      {/* Paginación: muestra cuántas se ven y permite traer más de a tandas. */}
+      {filtrados.length > 0 && (
+        <div className="flex flex-col items-center gap-2 pt-2">
+          <div className="text-[11px] text-gy400">
+            Mostrando {Math.min(limite, filtrados.length)} de {filtrados.length} pendiente{filtrados.length !== 1 ? "s" : ""}
+          </div>
+          {filtrados.length > limite && (
+            <button
+              onClick={() => setLimite((l) => l + PAGINA)}
+              className="flex items-center gap-1.5 px-4 py-2 text-[12px] font-medium bg-white border border-gy200 rounded-[8px] hover:bg-gy50 hover:border-g400 text-g700">
+              <i className="ti ti-chevron-down text-[14px]" /> Mostrar más ({filtrados.length - limite} restantes)
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
