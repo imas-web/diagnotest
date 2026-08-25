@@ -20,9 +20,10 @@ const esUrgente = (c: AnyRecord) => c.urgente || c.retiro?.urgente;
 // muestran de a `ver`; "Mostrar más" sube ese número. Las solapas
 // (Todos/Urgentes/Por personal) agrupan lo ya cargado en el cliente.
 export function CobranzasBandeja({
-  controles, total, q, fecha, ver,
+  controles, total, q, fecha, cadete, cadetes, ver,
 }: {
-  controles: AnyRecord[]; total: number; q: string; fecha: string; ver: number;
+  controles: AnyRecord[]; total: number; q: string; fecha: string;
+  cadete: string; cadetes: { id: string; nombre: string }[]; ver: number;
 }) {
   const [filtro, setFiltro] = useState<Filtro>("todos");
 
@@ -46,7 +47,7 @@ export function CobranzasBandeja({
   }, [ordenados, filtro]);
 
   const hayMas = controles.length < total;
-  const masHref = { pathname: "/cobranzas", query: { ...(q ? { q } : {}), ...(fecha ? { fecha } : {}), ver: ver + 50 } };
+  const masHref = { pathname: "/cobranzas", query: { ...(q ? { q } : {}), ...(fecha ? { fecha } : {}), ...(cadete ? { cadete } : {}), ver: ver + 50 } };
 
   return (
     <div className="space-y-4">
@@ -60,8 +61,13 @@ export function CobranzasBandeja({
           </div>
           <input type="date" name="fecha" defaultValue={fecha}
             className="px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[12px] bg-gy50 focus:outline-none focus:border-g500" />
+          <select name="cadete" defaultValue={cadete}
+            className="px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[12px] bg-gy50 focus:outline-none focus:border-g500 max-w-[160px]">
+            <option value="">Todos los cadetes</option>
+            {cadetes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
           <button type="submit" className="px-3.5 py-1.5 bg-g800 text-white text-[12px] font-medium rounded-[8px] hover:bg-g700">Buscar</button>
-          {(q || fecha) && <Link href="/cobranzas" className="px-2 py-1.5 text-[11px] text-gy500 hover:text-gy700">Limpiar</Link>}
+          {(q || fecha || cadete) && <Link href="/cobranzas" className="px-2 py-1.5 text-[11px] text-gy500 hover:text-gy700">Limpiar</Link>}
         </form>
         <div className="flex gap-1.5 flex-wrap">
           {FILTROS.map((f) => (
@@ -75,7 +81,7 @@ export function CobranzasBandeja({
 
       {!controles.length && (
         <div className="py-12 text-center text-gy400">
-          {q || fecha ? "Sin resultados para el filtro" : "Sin retiros pendientes de validación"}
+          {q || fecha || cadete ? "Sin resultados para el filtro" : "Sin retiros pendientes de validación"}
         </div>
       )}
 
