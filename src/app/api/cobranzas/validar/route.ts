@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -76,5 +77,6 @@ export async function POST(req: Request) {
   });
   if (audErr) return NextResponse.json({ error: audErr.message }, { status: 400 });
 
+  revalidatePath("/cobranzas");
   return NextResponse.json({ ok: true });
 }

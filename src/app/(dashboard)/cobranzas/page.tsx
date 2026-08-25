@@ -1,42 +1,76 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatCard } from "@/components/ui/StatCard";
 import { CobranzasBandeja } from "@/components/cobranzas/CobranzasBandeja";
 import { fmtMoneySign } from "@/lib/utils/format";
+import { landingPathForRole } from "@/lib/utils/roles";
 
-export default async function CobranzasPage() {
-  const supabase = await createClient();
+// Caché corta; la validación de una cobranza revalida al instante (revalidatePath).
+export const revalidate = 15;
 
-  // !inner + filtros sobre el retiro: no se muestran (ni suman) los duplicados
-  // sospechosos ni los anulados; cobranzas solo trabaja retiros válidos.
-  const { data: controles } = await supabase
-    .from("control_cobranzas")
-    .select(`
-      *,
-      retiro:retiro_id!inner(
-        id, importe_declarado, urgente, fecha_operativa, timestamp_carga, comentarios,
-        veterinaria_texto_original, codigo_original, comprobante_url, metodo_pago,
-        personal:personal_id(nombre),
-        control_preanalitica:control_preanalitica(estado, etiquetas, detalle, cancelado, cancelado_motivo, comentario, fotos_urls)
-      )
-    `)
-    .eq("estado", "pendiente")
-    .eq("retiro.anulado", false)
-    .neq("retiro.estado", "duplicado_sospechoso")
-    .order("created_at", { ascending: true });
+const ROLES = ["cobranzas", "dueno", "super_admin"];
+const PAGINA = 50;
+const SELECT = `
+  *,
+  retiro:retiro_id!inner(
+    id, importe_declarado, urgente, fecha_operativa, timestamp_carga, comentarios,
+    veterinaria_texto_original, codigo_original, comprobante_url, metodo_pago,
+    personal:personal_id(nombre),
+    control_preanalitica:control_preanalitica(estado, etiquetas, detalle, cancelado, cancelado_motivo, comentario, fotos_urls)
+  )`;
 
-  const totalPendiente = controles?.reduce((s, c) => s + ((c.retiro as any)?.importe_declarado ?? 0), 0) ?? 0;
+export default async function CobranzasPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; fecha?: string; ver?: string }>;
+}) {
+  // Guard de rol con la sesión; la LECTURA va con admin (rápida, sin RLS).
+  const auth = await createClient();
+  const { data: { user } } = await auth.auth.getUser();
+  if (!user) redirect("/login");
+  const { data: perfil } = await auth.from("profiles").select("rol").eq("id", user.id).single();
+  if (!perfil || !ROLES.includes(perfil.rol)) redirect(landingPathForRole(perfil?.rol));
+
+  const { q, fecha, ver } = await searchParams;
+  const term = (q ?? "").trim();
+  const limite = Math.min(600, Math.max(PAGINA, parseInt(ver ?? "", 10) || PAGINA));
+
+  const admin = createAdminClient();
+
+  // Consulta paginada (solo se traen `limite` filas → evita el freeze de traer
+  // las ~900 de una). Búsqueda y fecha se resuelven en el servidor.
+  let lista = admin.from("control_cobranzas").select(SELECT)
+    .eq("estado", "pendiente").eq("retiro.anulado", false).neq("retiro.estado", "duplicado_sospechoso");
+  let cnt = admin.from("control_cobranzas")
+    .select("id, retiro:retiro_id!inner(anulado, estado, fecha_operativa, codigo_original, veterinaria_texto_original)", { count: "exact", head: true })
+    .eq("estado", "pendiente").eq("retiro.anulado", false).neq("retiro.estado", "duplicado_sospechoso");
+  if (fecha) { lista = lista.eq("retiro.fecha_operativa", fecha); cnt = cnt.eq("retiro.fecha_operativa", fecha); }
+  if (term) {
+    const f = `codigo_original.ilike.%${term}%,veterinaria_texto_original.ilike.%${term}%`;
+    lista = lista.or(f, { referencedTable: "retiro" });
+    cnt = cnt.or(f, { referencedTable: "retiro" });
+  }
+  lista = lista.order("created_at", { ascending: true }).limit(limite);
+
+  const [{ data: controles }, { count: total }, { data: montos }] = await Promise.all([
+    lista,
+    cnt,
+    admin.from("control_cobranzas").select("importe_declarado").eq("estado", "pendiente"),
+  ]);
+  const totalPendiente = (montos ?? []).reduce((s, m) => s + (m.importe_declarado ?? 0), 0);
 
   return (
     <div>
       <Topbar title="Cobranzas — Pendientes" />
       <div className="p-6 space-y-4">
         <div className="grid grid-cols-2 gap-3.5">
-          <StatCard label="Pendientes" value={controles?.length ?? 0} accent="warn" />
-          <StatCard label="Total pendiente" value={fmtMoneySign(totalPendiente)} />
+          <StatCard label="Pendientes" value={total ?? 0} accent="warn" />
+          <StatCard label="Total pendiente (efectivo)" value={fmtMoneySign(totalPendiente)} />
         </div>
 
-        <CobranzasBandeja controles={controles ?? []} />
+        <CobranzasBandeja controles={controles ?? []} total={total ?? 0} q={term} fecha={fecha ?? ""} ver={limite} />
       </div>
     </div>
   );

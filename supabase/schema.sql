@@ -156,6 +156,10 @@ create table control_cobranzas (
   updated_at        timestamptz not null default now()
 );
 
+-- Índices para filtrar las bandejas por estado sin scans lentos.
+create index if not exists idx_control_cobranzas_estado on control_cobranzas(estado);
+create index if not exists idx_control_preanalitica_estado on control_preanalitica(estado);
+
 -- ── PEDIDOS DE RETIRO ──────────────────────────────────────
 create table pedidos_retiro (
   id                    uuid primary key default uuid_generate_v4(),
