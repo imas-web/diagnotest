@@ -37,7 +37,7 @@ export default async function PreanaliticaControladosPage({
     .select("*, retiro:retiro_id(id, cantidad_muestras, fecha_operativa, veterinaria_texto_original, codigo_original, personal:personal_id(nombre))")
     .eq("estado", "ok")
     .order("updated_at", { ascending: false })
-    .limit(500);
+    .limit(5000);
 
   if (desdeEf) query = query.gte("updated_at", baDayStartUTC(desdeEf));
   if (hasta) query = query.lt("updated_at", baDayEndUTC(hasta));
