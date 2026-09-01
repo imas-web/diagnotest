@@ -31,18 +31,41 @@ export async function POST(req: Request) {
 
   const admin = createAdminClient();
 
+  // El API de Supabase limita a 1000 filas por request (mismo límite que en
+  // inicio/page.tsx y caja/page.tsx). Con cajas que acumulan miles de retiros
+  // sin validar, hay que paginar para sumar bien — y, más abajo, sellarlos
+  // por filtro en vez de juntar un .in() con miles de IDs (esa lista gigante
+  // era justo lo que hacía fallar el guardado).
+  async function fetchAllRows<T>(
+    build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+  ): Promise<T[]> {
+    const rows: T[] = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await build(from, from + PAGE - 1);
+      if (error || !data?.length) break;
+      rows.push(...data);
+      if (data.length < PAGE) break;
+    }
+    return rows;
+  }
+
   // La "caja abierta" del cadete = todos sus retiros/gastos no validados
   // (rendicion_id NULL), sin importar el día. Recalculamos desde la base.
-  const [{ data: retiros }, { data: gastos }] = await Promise.all([
-    admin.from("retiros").select("id, importe_declarado, metodo_pago")
-      .eq("personal_id", personalId).eq("anulado", false).is("rendicion_id", null).lte("fecha_operativa", fecha),
-    admin.from("gastos").select("id, monto")
-      .eq("personal_id", personalId).is("rendicion_id", null).lte("fecha_operativa", fecha),
+  const [retiros, gastos] = await Promise.all([
+    fetchAllRows<{ id: string; importe_declarado: number; metodo_pago: string }>((from, to) =>
+      admin.from("retiros").select("id, importe_declarado, metodo_pago")
+        .eq("personal_id", personalId).eq("anulado", false).is("rendicion_id", null).lte("fecha_operativa", fecha)
+        .range(from, to)
+    ),
+    fetchAllRows<{ id: string; monto: number }>((from, to) =>
+      admin.from("gastos").select("id, monto")
+        .eq("personal_id", personalId).is("rendicion_id", null).lte("fecha_operativa", fecha)
+        .range(from, to)
+    ),
   ]);
 
-  const retiroIds = (retiros ?? []).map((r) => r.id);
-  const gastoIds = (gastos ?? []).map((g) => g.id);
-  if (retiroIds.length === 0 && gastoIds.length === 0) {
+  if (retiros.length === 0 && gastos.length === 0) {
     return NextResponse.json({ error: "El cadete no tiene una caja abierta para validar" }, { status: 400 });
   }
 
@@ -85,12 +108,17 @@ export async function POST(req: Request) {
   if (upErr || !rend) return NextResponse.json({ error: upErr?.message ?? "No se pudo crear la rendición" }, { status: 400 });
 
   // 2) Sellar los retiros/gastos de esta caja para que no vuelvan a sumar.
-  if (retiroIds.length) {
-    const { error } = await admin.from("retiros").update({ rendicion_id: rend.id }).in("id", retiroIds);
+  // Se actualiza por el mismo filtro usado para traerlos (no por lista de
+  // IDs): con miles de retiros abiertos, un .in() con todos los IDs arma una
+  // URL enorme que Supabase rechaza.
+  if (retiros.length) {
+    const { error } = await admin.from("retiros").update({ rendicion_id: rend.id })
+      .eq("personal_id", personalId).eq("anulado", false).is("rendicion_id", null).lte("fecha_operativa", fecha);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
-  if (gastoIds.length) {
-    const { error } = await admin.from("gastos").update({ rendicion_id: rend.id }).in("id", gastoIds);
+  if (gastos.length) {
+    const { error } = await admin.from("gastos").update({ rendicion_id: rend.id })
+      .eq("personal_id", personalId).is("rendicion_id", null).lte("fecha_operativa", fecha);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
