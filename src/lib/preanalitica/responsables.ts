@@ -8,7 +8,7 @@ export const RESPONSABLES_PREANALITICA = [
   "Candela",
   "Catalina",
   "Soledad",
-  "Susana",
+  "Milagros",
   "Laly",
   "Nadia",
   "Antonella",
