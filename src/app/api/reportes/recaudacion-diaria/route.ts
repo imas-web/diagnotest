@@ -12,6 +12,18 @@ export async function GET(request: NextRequest) {
     return new NextResponse("No autorizado", { status: 401 });
   }
 
+  // ?agrupar=semana agrega por semana (lunes a domingo) en vez de por día —
+  // misma forma de CSV, para pegar en otra pestaña con otro IMPORTDATA.
+  const agrupar = request.nextUrl.searchParams.get("agrupar") === "semana" ? "semana" : "dia";
+
+  function inicioDeSemanaISO(fechaISO: string): string {
+    const d = new Date(`${fechaISO}T12:00:00Z`);
+    const dow = d.getUTCDay(); // 0=domingo..6=sábado
+    const diffALunes = dow === 0 ? 6 : dow - 1;
+    d.setUTCDate(d.getUTCDate() - diffALunes);
+    return d.toISOString().slice(0, 10);
+  }
+
   const admin = createAdminClient();
 
   type Fila = { fecha_operativa: string; cadete: string; recaudado: number };
@@ -28,15 +40,20 @@ export async function GET(request: NextRequest) {
     if (data.length < PAGE) break;
   }
 
+  const clave = (f: Fila) => (agrupar === "semana" ? inicioDeSemanaISO(f.fecha_operativa) : f.fecha_operativa);
+
   const cadetes = Array.from(new Set(filas.map((f) => f.cadete))).sort((a, b) => a.localeCompare(b, "es"));
-  const fechas = Array.from(new Set(filas.map((f) => f.fecha_operativa))).sort((a, b) => b.localeCompare(a));
+  const fechas = Array.from(new Set(filas.map(clave))).sort((a, b) => b.localeCompare(a));
 
   const porFechaCadete = new Map<string, number>();
-  for (const f of filas) porFechaCadete.set(`${f.fecha_operativa}|${f.cadete}`, Number(f.recaudado));
+  for (const f of filas) {
+    const k = `${clave(f)}|${f.cadete}`;
+    porFechaCadete.set(k, (porFechaCadete.get(k) ?? 0) + Number(f.recaudado));
+  }
 
   const csvEscape = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 
-  const header = ["Fecha", ...cadetes, "Total"].map(csvEscape).join(",");
+  const header = [agrupar === "semana" ? "Semana (lunes)" : "Fecha", ...cadetes, "Total"].map(csvEscape).join(",");
   const lineas = fechas.map((fecha) => {
     let total = 0;
     const valores = cadetes.map((c) => {
