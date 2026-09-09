@@ -67,6 +67,7 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/dashboard", label: "Dashboard", icon: "ti-chart-bar" },
         { href: "/caja", label: "Control de caja", icon: "ti-cash-register" },
         { href: "/resumen", label: "Resumen", icon: "ti-report-analytics" },
+        { href: "/preanalitica/observados", label: "Observados", icon: "ti-alert-circle" },
         { href: "/pedidos", label: "Pedidos de retiro", icon: "ti-map-pin", badgeClass: "blue" },
         { href: "/retiros", label: "Todos los retiros", icon: "ti-table" },
         { href: "/admin/personal", label: "Personal", icon: "ti-users" },
