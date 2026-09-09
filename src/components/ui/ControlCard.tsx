@@ -73,9 +73,9 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
   const [savingEdicion, setSavingEdicion] = useState(false);
   const [savingDuplicado, setSavingDuplicado] = useState(false);
 
-  // En Control 2 las etiquetas del Control 1 quedan bloqueadas (solo lectura);
-  // el operador del segundo control puede agregar otras, pero no quitarlas.
-  const etiquetasBase = etapa === "c2" ? (control.etiquetas ?? []) as string[] : [];
+  // Etiquetas tal como quedaron en el Control 1 — solo para el resumen de
+  // arriba en Control 2; ya no bloquean edición (se pueden modificar en el 2).
+  const etiquetasControl1 = etapa === "c2" ? (control.etiquetas ?? []) as string[] : [];
 
   // Muestras editables (solo preanalítica) con confirmación.
   const [muestras, setMuestras] = useState(String(retiro?.cantidad_muestras ?? ""));
@@ -124,7 +124,6 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
   const [savingCodigo, setSavingCodigo] = useState(false);
 
   const toggleEtiqueta = (e: string) => {
-    if (etiquetasBase.includes(e)) return; // bloqueada: viene del Control 1
     setEtiquetas((prev) => (prev.includes(e) ? prev.filter((x) => x !== e) : [...prev, e]));
   };
 
@@ -457,16 +456,19 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
                 {control.responsable_1 ? ` · ${control.responsable_1}` : ""}
               </span>
             </div>
-            {etiquetasBase.length > 0 && (
+            {etiquetasControl1.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-1.5">
-                {etiquetasBase.map((e) => (
+                {etiquetasControl1.map((e) => (
                   <span key={e} className="px-2 py-0.5 rounded-full text-[11px] bg-white text-g700 border border-g200">{e}</span>
                 ))}
               </div>
             )}
-            {control.detalle
-              ? <div className="text-[12px] text-gy700">{control.detalle}</div>
-              : etiquetasBase.length === 0 && <div className="text-[12px] text-gy400 italic">Sin etiquetas ni observaciones en el Control 1</div>}
+            {/* Editable: se puede corregir la etiqueta/comentario del Control 1 desde acá */}
+            <input type="text"
+              className="w-full px-2.5 py-1.5 border-2 border-gy200 rounded-[6px] text-[12px] bg-white focus:outline-none focus:border-g500"
+              placeholder="Detalle / observación del Control 1..."
+              value={detalle}
+              onChange={(e) => setDetalle(e.target.value)} />
           </div>
         )}
 
@@ -621,17 +623,15 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
         {tipo === "pre" && (
           <div className="mb-3">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-gy400 mb-1.5">
-              Etiquetas{etapa === "c2" && <span className="ml-1 normal-case tracking-normal text-gy400 font-normal">(las del Control 1 quedan fijas; podés agregar más)</span>}
+              Etiquetas{etapa === "c2" && <span className="ml-1 normal-case tracking-normal text-gy400 font-normal">(se pueden modificar las del Control 1)</span>}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {ETIQUETAS_PRE.map((e) => {
                 const on = etiquetas.includes(e);
-                const locked = etiquetasBase.includes(e);
                 return (
-                  <button key={e} type="button" onClick={() => toggleEtiqueta(e)} disabled={locked}
-                    title={locked ? "Etiqueta del Control 1 (no se puede quitar)" : undefined}
-                    className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors ${on ? "bg-g700 text-white border-g700" : "bg-gy50 text-gy600 border-gy200 hover:border-g400 hover:text-g700"} ${locked ? "opacity-90 cursor-default" : ""}`}>
-                    {locked ? <i className="ti ti-lock text-[11px] mr-1" /> : on && <i className="ti ti-check text-[11px] mr-1" />}{e}
+                  <button key={e} type="button" onClick={() => toggleEtiqueta(e)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors ${on ? "bg-g700 text-white border-g700" : "bg-gy50 text-gy600 border-gy200 hover:border-g400 hover:text-g700"}`}>
+                    {on && <i className="ti ti-check text-[11px] mr-1" />}{e}
                   </button>
                 );
               })}
