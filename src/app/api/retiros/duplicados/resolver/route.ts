@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 // resuelve primero impacta para todos.
 const ROLES_PERMITIDOS = ["jefe_logistica", "preanalitica", "dueno", "super_admin"];
 
-type Accion = "confirmar" | "anular";
+type Accion = "confirmar" | "anular" | "reabrir";
 
 async function resolverUno(
   admin: ReturnType<typeof createAdminClient>,
@@ -55,6 +55,42 @@ async function resolverUno(
   return {};
 }
 
+// Deshace un "Confirmar" hecho por error: vuelve el retiro a duplicado_sospechoso
+// para que pase de nuevo por Confirmar/Descartar. Solo actúa si NO está ya en
+// duplicado_sospechoso (si ya lo está, no hay nada que reabrir).
+async function reabrirUno(
+  admin: ReturnType<typeof createAdminClient>,
+  id: string,
+  usuarioId: string,
+): Promise<{ yaResuelto?: boolean; error?: string }> {
+  const { data: retiro } = await admin
+    .from("retiros")
+    .select("id, estado, anulado, veterinaria_texto_original, codigo_original")
+    .eq("id", id)
+    .single();
+
+  if (!retiro) return { error: "Retiro no encontrado" };
+  if (retiro.anulado || retiro.estado === "duplicado_sospechoso") return { yaResuelto: true };
+
+  const { error } = await admin
+    .from("retiros")
+    .update({ estado: "duplicado_sospechoso" })
+    .eq("id", id);
+  if (error) return { error: error.message };
+
+  await admin.from("auditoria").insert({
+    entidad: "retiro",
+    entidad_id: id,
+    accion: "Reabierto como duplicado sospechoso (corrección de un Confirmar hecho por error)",
+    campo_modificado: "estado",
+    valor_anterior: retiro.estado,
+    valor_nuevo: `duplicado_sospechoso · ${retiro.codigo_original ?? ""} ${retiro.veterinaria_texto_original ?? ""}`.trim(),
+    usuario_id: usuarioId,
+  });
+
+  return {};
+}
+
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -69,11 +105,13 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Body inválido" }, { status: 400 }); }
 
   const { accion } = body;
-  if (accion !== "confirmar" && accion !== "anular") {
+  if (accion !== "confirmar" && accion !== "anular" && accion !== "reabrir") {
     return NextResponse.json({ error: "Parámetros inválidos" }, { status: 400 });
   }
 
   const admin = createAdminClient();
+  const resolverUna = (id: string) =>
+    accion === "reabrir" ? reabrirUno(admin, id, user.id) : resolverUno(admin, id, accion, user.id);
 
   // Lote: varios retiros de una.
   if (Array.isArray(body.ids)) {
@@ -84,7 +122,7 @@ export async function POST(req: Request) {
     let yaResueltos = 0;
     const errores: { id: string; error: string }[] = [];
     for (const id of ids) {
-      const res = await resolverUno(admin, id, accion, user.id);
+      const res = await resolverUna(id);
       if (res.error) errores.push({ id, error: res.error });
       else if (res.yaResuelto) yaResueltos++;
       else procesados++;
@@ -97,7 +135,7 @@ export async function POST(req: Request) {
   const { id } = body;
   if (!id) return NextResponse.json({ error: "Parámetros inválidos" }, { status: 400 });
 
-  const res = await resolverUno(admin, id, accion, user.id);
+  const res = await resolverUna(id);
   if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
   if (res.yaResuelto) return NextResponse.json({ ok: true, yaResuelto: true });
   return NextResponse.json({ ok: true });
