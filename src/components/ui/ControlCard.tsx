@@ -195,10 +195,10 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
   }
 
   // Envía el retiro al flujo de Duplicados (Retiros → Duplicados), donde ya
-  // se puede Confirmar o Anular. Saca el control de Observados: el caso se
+  // se puede Confirmar o Descartar. Saca el control de Observados: el caso se
   // termina de resolver allá, no acá.
   async function marcarDuplicado() {
-    if (!window.confirm("¿Marcar este retiro como duplicado?\n\nPasa a Retiros → Duplicados, donde se puede confirmar o anular. Sale de Observados.")) return;
+    if (!window.confirm("¿Marcar este retiro como duplicado?\n\nPasa a Retiros → Duplicados, donde se puede confirmar o descartar. Sale de Observados.")) return;
     setSavingDuplicado(true);
     const res = await fetch("/api/preanalitica/marcar-duplicado", {
       method: "POST",
@@ -379,7 +379,7 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
         )}
         {tipo === "pre" && (
           <button type="button" onClick={marcarDuplicado} disabled={saving || savingDuplicado}
-            title="Manda el retiro a Retiros → Duplicados para confirmar o anular"
+            title="Manda el retiro a Retiros → Duplicados para confirmar o descartar"
             className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-[6px] border border-red-200 text-red-700 bg-white hover:bg-red-50 disabled:opacity-50">
             {savingDuplicado
               ? <span className="w-3 h-3 border-2 border-red-300 border-t-red-700 rounded-full animate-spin" />

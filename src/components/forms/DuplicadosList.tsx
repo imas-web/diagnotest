@@ -10,8 +10,8 @@ import { toast } from "@/components/ui/ToastNotification";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>;
 
-// Tabla de Duplicados con selección múltiple: permite Confirmar o Anular
-// varios retiros de una, en vez de tocar "Confirmar"/"Anular" fila por fila.
+// Tabla de Duplicados con selección múltiple: permite Confirmar o Descartar
+// varios retiros de una, en vez de tocar "Confirmar"/"Descartar" fila por fila.
 // Disponible para todos los roles que ven esta pantalla (preanalítica,
 // logística, dueño, super_admin) — a diferencia del marcado en lote de
 // Observados, acá cada fila ya fue individualmente marcada como sospechosa
@@ -45,7 +45,7 @@ export function DuplicadosList({ duplicados }: { duplicados: AnyRecord[] }) {
   async function resolverSeleccionados(accion: "confirmar" | "anular") {
     const ids = Array.from(seleccionados);
     if (!ids.length) return;
-    if (accion === "anular" && !window.confirm(`¿Anular estos ${ids.length} retiro(s) por ser duplicados?\n\nNo suman a las muestras ni a los totales y salen de las bandejas, pero los registros se conservan (no se borran).`)) return;
+    if (accion === "anular" && !window.confirm(`¿Descartar estos ${ids.length} retiro(s) por ser duplicados?\n\nNo se eliminan: quedan anulados (no suman a las muestras ni a los totales) y salen de las bandejas, pero los registros se conservan.`)) return;
 
     setResolviendoLote(accion);
     const res = await fetch("/api/retiros/duplicados/resolver", {
@@ -58,7 +58,7 @@ export function DuplicadosList({ duplicados }: { duplicados: AnyRecord[] }) {
 
     if (!res.ok) { toast("error", json.error ?? "No se pudo resolver el lote"); return; }
     const fallidos = json.errores?.length ?? 0;
-    const verbo = accion === "confirmar" ? "confirmado(s)" : "anulado(s)";
+    const verbo = accion === "confirmar" ? "confirmado(s)" : "descartado(s)";
     if (fallidos) {
       toast("warning", `${json.procesados} ${verbo} ✓ · ${fallidos} no se pudieron resolver`);
     } else {
@@ -105,7 +105,7 @@ export function DuplicadosList({ duplicados }: { duplicados: AnyRecord[] }) {
             {resolviendoLote === "anular"
               ? <span className="w-3 h-3 border-2 border-red-300 border-t-red-700 rounded-full animate-spin" />
               : <i className="ti ti-x text-[13px]" />}
-            Anular seleccionados
+            Descartar seleccionados
           </button>
           <button type="button" onClick={salirDeSeleccion} disabled={resolviendoLote !== null}
             className="ml-auto text-[11px] text-gy500 hover:text-gy800 underline disabled:opacity-50">Cancelar</button>

@@ -13,7 +13,7 @@ export function DuplicadoActions({ retiroId }: Props) {
   const [loading, setLoading] = useState<"confirmar" | "anular" | null>(null);
 
   async function resolver(accion: "confirmar" | "anular") {
-    if (accion === "anular" && !confirm("¿Anular este retiro por ser un duplicado?\n\nNo suma a las muestras ni a los totales y sale de las bandejas, pero el registro se conserva (no se borra).")) return;
+    if (accion === "anular" && !confirm("¿Descartar este retiro por ser un duplicado?\n\nNo se elimina: queda anulado (no suma a las muestras ni a los totales) y sale de las bandejas, pero el registro se conserva.")) return;
     setLoading(accion);
     const res = await fetch("/api/retiros/duplicados/resolver", {
       method: "POST",
@@ -27,7 +27,7 @@ export function DuplicadoActions({ retiroId }: Props) {
     if (json.yaResuelto) { toast("info", "Otro usuario ya lo resolvió"); window.dispatchEvent(new Event("badges:refresh")); router.refresh(); return; }
 
     toast(accion === "confirmar" ? "success" : "warning",
-      accion === "confirmar" ? "Retiro confirmado como válido ✓" : "Duplicado anulado ✓");
+      accion === "confirmar" ? "Retiro confirmado como válido ✓" : "Duplicado descartado ✓");
     window.dispatchEvent(new Event("badges:refresh"));
     router.refresh();
   }
@@ -45,10 +45,10 @@ export function DuplicadoActions({ retiroId }: Props) {
       <button
         onClick={() => resolver("anular")}
         disabled={loading !== null}
-        title="Es un duplicado real, anularlo"
+        title="Es un duplicado real: no se elimina, queda anulado (sin sumar a totales)"
         className="flex items-center gap-1 px-2.5 py-1 text-[11px] bg-red-50 text-red-700 border border-red-200 rounded-[6px] hover:bg-red-100 disabled:opacity-50"
       >
-        <i className="ti ti-x text-[13px]" /> Anular
+        <i className="ti ti-x text-[13px]" /> Descartar
       </button>
     </div>
   );

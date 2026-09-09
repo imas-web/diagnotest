@@ -5,7 +5,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { DuplicadosList } from "@/components/forms/DuplicadosList";
 import { landingPathForRole } from "@/lib/utils/roles";
 
-// Caché corta (10s); Confirmar/Anular revalidan al instante.
+// Caché corta (10s); Confirmar/Descartar revalidan al instante.
 export const revalidate = 10;
 
 const ROLES_PAGINA = ["jefe_logistica", "preanalitica", "dueno", "super_admin"];

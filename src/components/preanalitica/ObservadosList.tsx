@@ -57,7 +57,7 @@ export function ObservadosList({ controles, esSuperAdmin }: { controles: AnyReco
   async function marcarSeleccionadosComoDuplicado() {
     const ids = Array.from(seleccionados);
     if (!ids.length) return;
-    if (!window.confirm(`¿Marcar ${ids.length} registro(s) como duplicado?\n\nPasan a Retiros → Duplicados, donde se pueden confirmar o anular de a uno. Salen de Observados.`)) return;
+    if (!window.confirm(`¿Marcar ${ids.length} registro(s) como duplicado?\n\nPasan a Retiros → Duplicados, donde se pueden confirmar o descartar. Salen de Observados.`)) return;
 
     setMarcandoLote(true);
     const res = await fetch("/api/preanalitica/marcar-duplicado", {
