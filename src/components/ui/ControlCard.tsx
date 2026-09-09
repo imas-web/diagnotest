@@ -71,6 +71,7 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
   const [responsable2, setResponsable2] = useState<string | null>(control.responsable_2 ?? null);
   const [saving, setSaving] = useState(false);
   const [savingEdicion, setSavingEdicion] = useState(false);
+  const [savingDuplicado, setSavingDuplicado] = useState(false);
 
   // En Control 2 las etiquetas del Control 1 quedan bloqueadas (solo lectura);
   // el operador del segundo control puede agregar otras, pero no quitarlas.
@@ -191,6 +192,24 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
     setSavingEdicion(false);
     if (!res.ok) { toast("error", json.error ?? "No se pudo guardar"); return; }
     toast("success", "Cambios guardados ✓");
+    router.refresh();
+  }
+
+  // Envía el retiro al flujo de Duplicados (Retiros → Duplicados), donde ya
+  // se puede Confirmar o Anular. Saca el control de Observados: el caso se
+  // termina de resolver allá, no acá.
+  async function marcarDuplicado() {
+    if (!window.confirm("¿Marcar este retiro como duplicado?\n\nPasa a Retiros → Duplicados, donde se puede confirmar o anular. Sale de Observados.")) return;
+    setSavingDuplicado(true);
+    const res = await fetch("/api/preanalitica/marcar-duplicado", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ controlId: control.id }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setSavingDuplicado(false);
+    if (!res.ok) { toast("error", json.error ?? "No se pudo marcar como duplicado"); return; }
+    toast("success", "Enviado a Retiros → Duplicados ✓");
     router.refresh();
   }
 
@@ -696,6 +715,16 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
             <button onClick={() => save("observado")} disabled={saving}
               className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-amber-bg text-amber-text border border-amber/40 rounded-[6px] hover:bg-amber/10 disabled:opacity-50">
               <i className="ti ti-eye text-[13px]" /> Observar
+            </button>
+          )}
+          {tipo === "pre" && etapa === "obs" && (
+            <button onClick={marcarDuplicado} disabled={saving || savingDuplicado}
+              title="Manda el retiro a Retiros → Duplicados para confirmar o anular"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-red-50 text-red-700 border border-red-200 rounded-[6px] hover:bg-red-100 disabled:opacity-50">
+              {savingDuplicado
+                ? <span className="w-3 h-3 border-2 border-red-300 border-t-red-700 rounded-full animate-spin" />
+                : <i className="ti ti-copy text-[13px]" />}
+              Es duplicado
             </button>
           )}
           <span className="ml-auto text-[10px] text-gy400">
