@@ -47,7 +47,7 @@ export default async function PreanaliticaObservadosPage() {
           </div>
         </div>
 
-        <ObservadosList controles={controles ?? []} />
+        <ObservadosList controles={controles ?? []} esSuperAdmin={perfil.rol === "super_admin"} />
       </div>
     </div>
   );
