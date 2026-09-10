@@ -30,9 +30,17 @@ export async function GET(request: NextRequest) {
   const filas: Fila[] = [];
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
+    // El .range() de PostgREST es paginación por OFFSET: sin un order()
+    // explícito, Postgres no garantiza el mismo orden entre una página y la
+    // siguiente, así que con más de 1000 filas (como acá, ~85 días x ~23
+    // cadetes) se podían saltear u omitir filas entre páginas. fecha_operativa
+    // + cadete identifican una fila única de la vista (agrupada por esos dos
+    // campos), así que ordenar por ambos la hace determinística.
     const { data, error } = await admin
       .from("vista_recaudacion_diaria")
       .select("fecha_operativa, cadete, recaudado")
+      .order("fecha_operativa", { ascending: true })
+      .order("cadete", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) return new NextResponse(`Error: ${error.message}`, { status: 500 });
     if (!data?.length) break;
