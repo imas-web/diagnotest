@@ -57,9 +57,13 @@ export async function GET(request: NextRequest) {
   const lineas = fechas.map((fecha) => {
     let total = 0;
     const valores = cadetes.map((c) => {
-      const monto = porFechaCadete.get(`${fecha}|${c}`) ?? 0;
+      const clave = `${fecha}|${c}`;
+      const monto = porFechaCadete.get(clave) ?? 0;
       total += monto;
-      return monto ? String(Math.round(monto)) : "";
+      // Distinguir "no trabajó ese día" (celda vacía) de "trabajó y cobró
+      // $0" (existe la clave, pero suma 0 — caso válido en el sistema):
+      // antes ambos se mostraban en blanco, indistinguibles entre sí.
+      return porFechaCadete.has(clave) ? String(Math.round(monto)) : "";
     });
     return [fecha, ...valores, String(Math.round(total))].join(",");
   });
