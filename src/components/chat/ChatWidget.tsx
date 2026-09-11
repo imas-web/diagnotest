@@ -242,25 +242,34 @@ export function ChatWidget({ me }: { me: Perfil }) {
 
   return (
     <>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? "Cerrar chat" : "Abrir chat interno"}
-        title="Chat interno de Diagnotest"
-        className="fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full bg-g700 text-white shadow-lg flex items-center justify-center hover:bg-g800 transition-colors"
-      >
-        {open ? (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        ) : (
-          <i className="ti ti-message-circle text-[26px]" />
-        )}
-        {!open && noLeidosCount > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[19px] h-[19px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
-            {noLeidosCount > 9 ? "9+" : noLeidosCount}
+      {/* Mismo patrón que el botón de DiagnoLis: pill con el nombre arriba,
+          para que a simple vista se distinga del asistente automático. */}
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col items-center gap-1.5">
+        {!open && (
+          <span className="px-2 py-1 rounded-full bg-g700 text-white text-[10px] font-semibold shadow-lg pointer-events-none whitespace-nowrap">
+            Chat interno
           </span>
         )}
-      </button>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? "Cerrar chat" : "Abrir chat interno"}
+          title="Chat interno de Diagnotest (no es DiagnoLis)"
+          className="relative w-14 h-14 rounded-full bg-g700 text-white shadow-lg flex items-center justify-center hover:bg-g800 transition-colors text-[24px] leading-none"
+        >
+          {open ? (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          ) : (
+            <span aria-hidden>👥</span>
+          )}
+          {!open && noLeidosCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[19px] h-[19px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
+              {noLeidosCount > 9 ? "9+" : noLeidosCount}
+            </span>
+          )}
+        </button>
+      </div>
 
       {open && (
         <div className="fixed bottom-24 right-5 z-50 w-[min(340px,calc(100vw-2.5rem))] h-[min(480px,calc(100vh-8rem))] bg-white rounded-xl shadow-2xl border border-gy200 flex flex-col overflow-hidden">
@@ -270,7 +279,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
                 <i className="ti ti-arrow-left text-[16px]" />
               </button>
             ) : (
-              <i className="ti ti-message-circle text-[16px] shrink-0" />
+              <span className="text-[15px] shrink-0" aria-hidden>👥</span>
             )}
             <span className="font-semibold text-[13px] flex-1 truncate">
               {seleccionada && conversacionActual ? nombreConversacion(conversacionActual, me.id) : "Chat interno"}
