@@ -5,7 +5,8 @@ export type UserRole =
   | "cobranzas"
   | "dueno"
   | "super_admin"
-  | "carga";
+  | "carga"
+  | "chat";
 
 export type TipoPersonal = "fijo" | "reemplazo" | "ventanilla";
 

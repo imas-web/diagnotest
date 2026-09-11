@@ -80,6 +80,7 @@ export function RoleBadge({ rol }: { rol: string }) {
     carga: { label: "Carga", cls: "bg-blue-50 text-blue-700" },
     dueno: { label: "Dueño", cls: "bg-g50 text-g700" },
     super_admin: { label: "Super Admin", cls: "bg-red-50 text-red-700" },
+    chat: { label: "Solo chat", cls: "bg-gy100 text-gy500" },
   };
   const r = map[rol] ?? { label: rol, cls: "bg-gy100 text-gy600" };
   return (

@@ -22,6 +22,8 @@ export function landingPathForRole(rol: string | null | undefined): string {
     case "dueno":
     case "super_admin":
       return "/dashboard";
+    case "chat":
+      return "/chat";
     default:
       return "/login";
   }

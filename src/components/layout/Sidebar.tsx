@@ -34,6 +34,7 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/admin/veterinarias", label: "Veterinarias", icon: "ti-building-hospital" },
         { href: "/retiros/duplicados", label: "Duplicados", icon: "ti-copy", badgeClass: "amber" },
         { href: "/gastos/autorizar", label: "Gastos a autorizar", icon: "ti-cash", badgeClass: "purple" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "preanalitica":
       return [
@@ -42,6 +43,7 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/preanalitica/observados", label: "Observados", icon: "ti-alert-circle" },
         { href: "/resumen", label: "Resumen", icon: "ti-report-analytics" },
         { href: "/retiros/duplicados", label: "Duplicados", icon: "ti-copy", badgeClass: "amber" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "cobranzas":
       return [
@@ -49,11 +51,13 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/cobranzas/validados", label: "Validados", icon: "ti-circle-check" },
         { href: "/cobranzas/diferencias", label: "Diferencias", icon: "ti-alert-triangle", badgeClass: "amber" },
         { href: "/cancelados", label: "Cancelados / Anulados", icon: "ti-ban", badgeClass: "default" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "carga":
       return [
         { href: "/carga", label: "Controlados", icon: "ti-clipboard-check" },
         { href: "/cancelados", label: "Cancelados / Anulados", icon: "ti-ban", badgeClass: "default" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "dueno":
       return [
@@ -61,6 +65,7 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/caja", label: "Control de caja", icon: "ti-cash-register" },
         { href: "/retiros", label: "Todos los retiros", icon: "ti-table" },
         { href: "/gastos/autorizar", label: "Gastos", icon: "ti-cash" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "super_admin":
       return [
@@ -75,7 +80,12 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/admin/zonas", label: "Zonas", icon: "ti-map" },
         { href: "/gastos/autorizar", label: "Gastos", icon: "ti-cash", badgeClass: "purple" },
         { href: "/admin/auditoria", label: "Auditoría", icon: "ti-history" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
         { href: "/admin/config", label: "Configuración", icon: "ti-settings" },
+      ];
+    case "chat":
+      return [
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     default:
       return [];
