@@ -30,6 +30,11 @@ export interface Mensaje {
   created_at: string;
 }
 
+export interface Grupo {
+  id: string;
+  nombre: string | null;
+}
+
 export interface UltimoMensaje {
   conversacion_id: string;
   contenido: string | null;

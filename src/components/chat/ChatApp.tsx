@@ -7,7 +7,7 @@ import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import {
-  type Perfil, type Conversacion, type Mensaje, type UltimoMensaje,
+  type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
   perfilDe, nombreConversacion, iconoConversacion, SELECT_MENSAJE,
 } from "@/components/chat/chatShared";
 
@@ -39,6 +39,11 @@ export function ChatApp({
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [buscarContacto, setBuscarContacto] = useState("");
+  const [grupos, setGrupos] = useState<Grupo[]>([]);
+  // Grupos que se abrieron para mandar un mensaje sin ser miembro (lista de
+  // difusión): se guardan aparte para poder avisar que no se va a ver el
+  // historial ni las respuestas, a diferencia de un grupo propio.
+  const [gruposAjenos, setGruposAjenos] = useState<Set<string>>(new Set());
 
   const fileInput = useRef<HTMLInputElement>(null);
   const mensajesEndRef = useRef<HTMLDivElement>(null);
@@ -118,6 +123,29 @@ export function ChatApp({
   useEffect(() => {
     mensajesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensajes]);
+
+  // La lista de grupos para elegir como destino (incluye los que no son
+  // propios) se trae recién al abrir el modal, no de arranque.
+  useEffect(() => {
+    if (!mostrarNuevo || grupos.length) return;
+    fetch("/api/chat/grupos").then((r) => r.json()).then((json) => setGrupos(json.grupos ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mostrarNuevo]);
+
+  function abrirGrupo(grupo: Grupo) {
+    const existente = conversaciones.find((c) => c.id === grupo.id);
+    if (!existente) {
+      const nuevaConv: Conversacion = {
+        id: grupo.id, tipo: "grupo", nombre: grupo.nombre, dm_clave: null, created_at: new Date().toISOString(),
+        chat_miembros: [],
+      };
+      setConversaciones((prev) => [...prev, nuevaConv]);
+      setGruposAjenos((prev) => new Set(prev).add(grupo.id));
+    }
+    setSeleccionada(grupo.id);
+    setMostrarNuevo(false);
+    setBuscarContacto("");
+  }
 
   async function abrirDM(otroId: string) {
     const clave = [me.id, otroId].sort().join("|");
@@ -210,6 +238,12 @@ export function ChatApp({
     return c.nombre.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
   });
 
+  const gruposFiltrados = grupos.filter((g) => {
+    const q = buscarContacto.trim().toLowerCase();
+    if (!q) return true;
+    return (g.nombre ?? "").toLowerCase().includes(q);
+  });
+
   return (
     <div className="flex-1 flex min-h-0">
       {/* Lista de conversaciones */}
@@ -278,7 +312,11 @@ export function ChatApp({
               {cargandoMensajes ? (
                 <div className="text-center text-[12px] text-gy400 py-6">Cargando…</div>
               ) : !mensajes.length ? (
-                <div className="text-center text-[12px] text-gy400 py-6">Ningún mensaje todavía — escribí el primero</div>
+                <div className="text-center text-[12px] text-gy400 py-6 px-4">
+                  {seleccionada && gruposAjenos.has(seleccionada)
+                    ? "No sos miembro de este grupo: le podés mandar un mensaje, pero no vas a ver el historial ni las respuestas."
+                    : "Ningún mensaje todavía — escribí el primero"}
+                </div>
               ) : (
                 mensajes.map((m) => {
                   const propio = m.remitente_id === me.id;
@@ -359,6 +397,27 @@ export function ChatApp({
               />
             </div>
             <div className="flex-1 overflow-y-auto">
+              {gruposFiltrados.length > 0 && (
+                <div className="px-4 pt-2.5 pb-1 text-[10.5px] font-semibold text-gy400 uppercase tracking-wide">
+                  Grupos — mandar sin ser miembro
+                </div>
+              )}
+              {gruposFiltrados.map((g) => (
+                <button key={g.id} onClick={() => abrirGrupo(g)}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-gy50 border-b border-gy50">
+                  <div className="w-8 h-8 rounded-full bg-g100 text-g700 flex items-center justify-center text-[13px] shrink-0">
+                    <i className="ti ti-hash" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12.5px] font-medium text-gy900 truncate">{g.nombre ?? "Grupo"}</div>
+                  </div>
+                </button>
+              ))}
+              {contactosFiltrados.length > 0 && (
+                <div className="px-4 pt-2.5 pb-1 text-[10.5px] font-semibold text-gy400 uppercase tracking-wide">
+                  Personas
+                </div>
+              )}
               {contactosFiltrados.map((c) => (
                 <button key={c.id} onClick={() => abrirDM(c.id)}
                   className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-gy50 border-b border-gy50">
@@ -371,7 +430,7 @@ export function ChatApp({
                   </div>
                 </button>
               ))}
-              {!contactosFiltrados.length && (
+              {!contactosFiltrados.length && !gruposFiltrados.length && (
                 <div className="p-6 text-center text-[12px] text-gy400">Sin resultados</div>
               )}
             </div>

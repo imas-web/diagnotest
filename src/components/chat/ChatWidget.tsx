@@ -8,7 +8,7 @@ import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import {
-  type Perfil, type Conversacion, type Mensaje, type UltimoMensaje,
+  type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
   nombreConversacion, iconoConversacion, SELECT_CONVERSACIONES, SELECT_MENSAJE,
 } from "@/components/chat/chatShared";
 
@@ -32,6 +32,10 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const [enviando, setEnviando] = useState(false);
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [buscarContacto, setBuscarContacto] = useState("");
+  const [grupos, setGrupos] = useState<Grupo[]>([]);
+  // Grupos abiertos para mandar un mensaje sin ser miembro (lista de
+  // difusión): no se va a ver su historial ni las respuestas.
+  const [gruposAjenos, setGruposAjenos] = useState<Set<string>>(new Set());
 
   const mensajesEndRef = useRef<HTMLDivElement>(null);
 
@@ -133,6 +137,27 @@ export function ChatWidget({ me }: { me: Perfil }) {
 
   const conversacionActual = conversaciones.find((c) => c.id === seleccionada) ?? null;
 
+  useEffect(() => {
+    if (!mostrarNuevo || grupos.length) return;
+    fetch("/api/chat/grupos").then((r) => r.json()).then((json) => setGrupos(json.grupos ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mostrarNuevo]);
+
+  function abrirGrupo(grupo: Grupo) {
+    const existente = conversaciones.find((c) => c.id === grupo.id);
+    if (!existente) {
+      const nuevaConv: Conversacion = {
+        id: grupo.id, tipo: "grupo", nombre: grupo.nombre, dm_clave: null, created_at: new Date().toISOString(),
+        chat_miembros: [],
+      };
+      setConversaciones((prev) => [...prev, nuevaConv]);
+      setGruposAjenos((prev) => new Set(prev).add(grupo.id));
+    }
+    setSeleccionada(grupo.id);
+    setMostrarNuevo(false);
+    setBuscarContacto("");
+  }
+
   async function abrirDM(otroId: string) {
     const clave = [me.id, otroId].sort().join("|");
     const existente = conversaciones.find((c) => c.dm_clave === clave);
@@ -179,6 +204,12 @@ export function ChatWidget({ me }: { me: Perfil }) {
     const q = buscarContacto.trim().toLowerCase();
     if (!q) return true;
     return c.nombre.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+  });
+
+  const gruposFiltrados = grupos.filter((g) => {
+    const q = buscarContacto.trim().toLowerCase();
+    if (!q) return true;
+    return (g.nombre ?? "").toLowerCase().includes(q);
   });
 
   if (pathname === "/chat") return null;
@@ -270,7 +301,11 @@ export function ChatWidget({ me }: { me: Perfil }) {
                 {cargandoMensajes ? (
                   <div className="text-center text-[11.5px] text-gy400 py-4">Cargando…</div>
                 ) : !mensajes.length ? (
-                  <div className="text-center text-[11.5px] text-gy400 py-4">Ningún mensaje todavía</div>
+                  <div className="text-center text-[11px] text-gy400 py-4 px-3">
+                    {seleccionada && gruposAjenos.has(seleccionada)
+                      ? "No sos miembro de este grupo: se lo puede mandar igual, pero no vas a ver el historial ni las respuestas."
+                      : "Ningún mensaje todavía"}
+                  </div>
                 ) : (
                   mensajes.map((m) => {
                     const propio = m.remitente_id === me.id;
@@ -339,6 +374,27 @@ export function ChatWidget({ me }: { me: Perfil }) {
               />
             </div>
             <div className="flex-1 overflow-y-auto">
+              {gruposFiltrados.length > 0 && (
+                <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-gy400 uppercase tracking-wide">
+                  Grupos — mandar sin ser miembro
+                </div>
+              )}
+              {gruposFiltrados.map((g) => (
+                <button key={g.id} onClick={() => abrirGrupo(g)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gy50 border-b border-gy50">
+                  <div className="w-7 h-7 rounded-full bg-g100 text-g700 flex items-center justify-center text-[12px] shrink-0">
+                    <i className="ti ti-hash" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11.5px] font-medium text-gy900 truncate">{g.nombre ?? "Grupo"}</div>
+                  </div>
+                </button>
+              ))}
+              {contactosFiltrados.length > 0 && (
+                <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-gy400 uppercase tracking-wide">
+                  Personas
+                </div>
+              )}
               {contactosFiltrados.map((c) => (
                 <button key={c.id} onClick={() => abrirDM(c.id)}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gy50 border-b border-gy50">
@@ -351,7 +407,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
                   </div>
                 </button>
               ))}
-              {!contactosFiltrados.length && (
+              {!contactosFiltrados.length && !gruposFiltrados.length && (
                 <div className="p-5 text-center text-[11.5px] text-gy400">Sin resultados</div>
               )}
             </div>
