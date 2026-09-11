@@ -31,11 +31,39 @@ export async function POST(req: Request) {
 
   const clave = [user.id, otroId].sort().join("|");
 
-  const { data: existente } = await admin
+  const { data: porClave } = await admin
     .from("chat_conversaciones").select("id").eq("dm_clave", clave).maybeSingle();
 
-  const conversacionId = existente?.id ?? crypto.randomUUID();
-  if (!existente) {
+  let conversacionId = porClave?.id ?? null;
+
+  // Red de contención por si quedó un DM viejo con dm_clave nulo o
+  // desalineado (de antes de que esta ruta existiera): busca cualquier
+  // conversación tipo dm donde los dos ya sean miembros, en vez de crear
+  // una segunda. Si la encuentra, de paso le arregla el dm_clave.
+  if (!conversacionId) {
+    const { data: misDms } = await admin
+      .from("chat_miembros")
+      .select("conversacion_id, chat_conversaciones!inner(tipo)")
+      .eq("profile_id", user.id)
+      .eq("chat_conversaciones.tipo", "dm");
+    const idsPropios = (misDms ?? []).map((m) => m.conversacion_id);
+    if (idsPropios.length) {
+      const { data: compartida } = await admin
+        .from("chat_miembros")
+        .select("conversacion_id")
+        .eq("profile_id", otroId)
+        .in("conversacion_id", idsPropios)
+        .limit(1)
+        .maybeSingle();
+      if (compartida) {
+        conversacionId = compartida.conversacion_id;
+        await admin.from("chat_conversaciones").update({ dm_clave: clave }).eq("id", conversacionId);
+      }
+    }
+  }
+
+  if (!conversacionId) {
+    conversacionId = crypto.randomUUID();
     const { error } = await admin.from("chat_conversaciones").insert({ id: conversacionId, tipo: "dm", dm_clave: clave });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }

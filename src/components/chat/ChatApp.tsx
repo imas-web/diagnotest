@@ -174,6 +174,22 @@ export function ChatApp({
     setBuscarContacto("");
   }
 
+  async function eliminarConversacion(c: Conversacion, e: React.MouseEvent) {
+    e.stopPropagation();
+    const nombre = nombreConversacion(c, me.id);
+    if (!confirm(`¿Eliminar definitivamente la conversación con "${nombre}"?\n\nSe borra el historial para todos los que participaban. Esta acción no se puede deshacer.`)) return;
+    const res = await fetch("/api/chat/conversaciones/eliminar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: c.id }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) { toast("error", json.error ?? "No se pudo eliminar"); return; }
+    setConversaciones((prev) => prev.filter((x) => x.id !== c.id));
+    if (seleccionada === c.id) setSeleccionada(null);
+    toast("success", "Conversación eliminada");
+  }
+
   async function abrirDM(otroId: string) {
     const clave = [me.id, otroId].sort().join("|");
     const existente = conversaciones.find((c) => c.dm_clave === clave);
@@ -290,11 +306,14 @@ export function ChatApp({
             const activa = c.id === seleccionada;
             const noLeida = tieneNoLeidos(c, me.id, preview);
             return (
-              <button
+              <div
                 key={c.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => setSeleccionada(c.id)}
+                onKeyDown={(e) => { if (e.key === "Enter") setSeleccionada(c.id); }}
                 className={cn(
-                  "w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-gy50 hover:bg-gy50",
+                  "w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-gy50 hover:bg-gy50 cursor-pointer",
                   activa && "bg-g50"
                 )}
               >
@@ -315,7 +334,16 @@ export function ChatApp({
                   </div>
                 </div>
                 {noLeida && <span className="w-2 h-2 rounded-full bg-g600 shrink-0" />}
-              </button>
+                {me.rol === "super_admin" && c.tipo !== "general" && (
+                  <button
+                    onClick={(e) => eliminarConversacion(c, e)}
+                    title="Eliminar conversación"
+                    className="shrink-0 w-6 h-6 flex items-center justify-center rounded-[6px] text-gy300 hover:text-red-600 hover:bg-red-50"
+                  >
+                    <i className="ti ti-trash text-[13px]" />
+                  </button>
+                )}
+              </div>
             );
           })}
           {!listaOrdenada.length && (
