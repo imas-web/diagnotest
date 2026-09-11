@@ -71,14 +71,14 @@ export function ChatbotWidget() {
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         ) : (
-          <i className="ti ti-robot text-[26px]" />
+          <i className="ti ti-user text-[26px]" />
         )}
       </button>
 
       {open && (
         <div className="fixed bottom-24 left-5 z-50 w-[min(380px,calc(100vw-2.5rem))] h-[min(560px,calc(100vh-8rem))] bg-white rounded-xl shadow-2xl border border-gy200 flex flex-col overflow-hidden">
           <div className="bg-indigo-600 text-white px-4 py-3 shrink-0">
-            <p className="font-semibold text-sm flex items-center gap-1.5"><i className="ti ti-robot text-[16px]" /> DiagnoLis</p>
+            <p className="font-semibold text-sm flex items-center gap-1.5"><i className="ti ti-user text-[16px]" /> DiagnoLis</p>
             <p className="text-xs text-indigo-100">Asistente automático — preguntá sobre retiros, controles, pedidos o gastos. No es el chat de la empresa.</p>
           </div>
 

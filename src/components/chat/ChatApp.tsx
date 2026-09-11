@@ -207,18 +207,25 @@ export function ChatApp({
     const contenido = texto.trim();
     if (!contenido || !seleccionada || enviando) return;
     setEnviando(true);
-    const { data, error } = await supabase
+    // El id se genera acá y se manda explícito en el insert (sin encadenar
+    // .select()): pedirle a Postgres que devuelva la fila recién insertada
+    // (Prefer: return=representation) obliga a repasar la política de
+    // SELECT sobre esa fila en la misma vuelta — mismo problema de orden
+    // que tuvo la creación de un DM. Al no pedir nada de vuelta, el insert
+    // sólo depende del WITH CHECK y no hace falta releer nada.
+    const id = crypto.randomUUID();
+    const nuevo: Mensaje = {
+      id, conversacion_id: seleccionada, remitente_id: me.id, contenido,
+      adjunto_url: null, adjunto_tipo: null, adjunto_nombre: null, created_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
       .from("chat_mensajes")
-      .insert({ conversacion_id: seleccionada, remitente_id: me.id, contenido })
-      .select("id, conversacion_id, remitente_id, contenido, adjunto_url, adjunto_tipo, adjunto_nombre, created_at")
-      .single();
+      .insert({ id, conversacion_id: seleccionada, remitente_id: me.id, contenido });
     setEnviando(false);
-    if (error) { toast("error", "No se pudo enviar el mensaje"); return; }
+    if (error) { toast("error", error.message || "No se pudo enviar el mensaje"); return; }
     setTexto("");
-    // Se agrega en el momento en vez de esperar al evento realtime (que
-    // puede tardar o no llegar): el dedupe por id evita que se duplique
-    // cuando el propio evento realtime también llega.
-    const nuevo = data as Mensaje;
+    // Dedupe por id evita que se duplique si el propio evento realtime
+    // también llega.
     setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
   }
 
@@ -239,15 +246,17 @@ export function ChatApp({
     }
     const url = supabase.storage.from("chat-adjuntos").getPublicUrl(path).data.publicUrl;
     const tipo = file.type.startsWith("image/") ? "imagen" : "archivo";
-    const { data, error } = await supabase
+    const id = crypto.randomUUID();
+    const nuevo: Mensaje = {
+      id, conversacion_id: seleccionada, remitente_id: me.id, contenido: null,
+      adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name, created_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
       .from("chat_mensajes")
-      .insert({ conversacion_id: seleccionada, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name })
-      .select("id, conversacion_id, remitente_id, contenido, adjunto_url, adjunto_tipo, adjunto_nombre, created_at")
-      .single();
+      .insert({ id, conversacion_id: seleccionada, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name });
     setSubiendoArchivo(false);
     if (fileInput.current) fileInput.current.value = "";
-    if (error) { toast("error", "No se pudo enviar el adjunto"); return; }
-    const nuevo = data as Mensaje;
+    if (error) { toast("error", error.message || "No se pudo enviar el adjunto"); return; }
     setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
   }
 
