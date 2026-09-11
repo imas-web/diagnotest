@@ -33,7 +33,7 @@ export default async function ConfigPage() {
 
   return (
     <div>
-      <Topbar title="Configuración" />
+      <Topbar title="Configuración" subtitle="DiagnoLis" />
       <div className="p-6">
         <UsuariosManager usuarios={usuarios} zonas={(zonas ?? []) as ZonaOption[]} />
       </div>
