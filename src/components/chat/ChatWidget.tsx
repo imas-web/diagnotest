@@ -9,7 +9,7 @@ import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
-  nombreConversacion, iconoConversacion, tieneNoLeidos, SELECT_CONVERSACIONES, SELECT_MENSAJE,
+  nombreConversacion, iconoConversacion, tieneNoLeidos, remitenteDe, SELECT_CONVERSACIONES, SELECT_MENSAJE,
 } from "@/components/chat/chatShared";
 
 // Acceso rápido al chat interno sin salir de la pantalla en la que se está
@@ -116,7 +116,13 @@ export function ChatWidget({ me }: { me: Perfil }) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "chat_mensajes", filter: `conversacion_id=eq.${seleccionada}` },
         (payload) => {
-          const nuevo = payload.new as Mensaje;
+          // El evento realtime no trae el remitente embebido (eso es cosa
+          // de PostgREST, no de Realtime) — se completa a mano.
+          const cruda = payload.new as Mensaje;
+          const nuevo: Mensaje = {
+            ...cruda,
+            remitente: cruda.remitente_id === me.id ? me : contactos.find((c) => c.id === cruda.remitente_id) ?? null,
+          };
           setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
           marcarLeido(seleccionada);
         }
@@ -209,7 +215,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
     const id = crypto.randomUUID();
     const nuevo: Mensaje = {
       id, conversacion_id: seleccionada, remitente_id: me.id, contenido,
-      adjunto_url: null, adjunto_tipo: null, adjunto_nombre: null, created_at: new Date().toISOString(),
+      adjunto_url: null, adjunto_tipo: null, adjunto_nombre: null, created_at: new Date().toISOString(), remitente: me,
     };
     const { error } = await supabase
       .from("chat_mensajes")
@@ -336,12 +342,16 @@ export function ChatWidget({ me }: { me: Perfil }) {
                 ) : (
                   mensajes.map((m) => {
                     const propio = m.remitente_id === me.id;
+                    const remitente = remitenteDe(m);
                     return (
                       <div key={m.id} className={cn("flex", propio ? "justify-end" : "justify-start")}>
                         <div className={cn(
                           "max-w-[80%] rounded-[10px] px-2.5 py-1.5 text-[11.5px] shadow-sm",
                           propio ? "bg-g700 text-white rounded-br-[3px]" : "bg-white text-gy900 rounded-bl-[3px] border border-gy200"
                         )}>
+                          {!propio && conversacionActual?.tipo !== "dm" && (
+                            <div className="text-[9.5px] font-semibold text-g700 mb-0.5">{remitente?.nombre ?? "—"}</div>
+                          )}
                           {m.adjunto_url && m.adjunto_tipo === "imagen" && (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={m.adjunto_url} alt={m.adjunto_nombre ?? "Adjunto"} className="rounded-[6px] max-w-full mb-1" />

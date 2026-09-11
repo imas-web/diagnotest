@@ -29,6 +29,10 @@ export interface Mensaje {
   adjunto_tipo: string | null;
   adjunto_nombre: string | null;
   created_at: string;
+  // Perfil de quien lo mandó, embebido directo en el mensaje — no alcanza
+  // con cruzar contra chat_miembros de la conversación porque alguien
+  // puede mandar un mensaje a un grupo sin ser miembro (difusión).
+  remitente?: Perfil | Perfil[] | null;
 }
 
 export interface Grupo {
@@ -50,6 +54,11 @@ export interface UltimoMensaje {
 export function perfilDe(m: Miembro | undefined): Perfil | null {
   if (!m) return null;
   return Array.isArray(m.profiles) ? (m.profiles[0] ?? null) : m.profiles;
+}
+
+export function remitenteDe(m: Mensaje): Perfil | null {
+  if (!m.remitente) return null;
+  return Array.isArray(m.remitente) ? (m.remitente[0] ?? null) : m.remitente;
 }
 
 export function nombreConversacion(c: Conversacion, meId: string): string {
@@ -79,4 +88,4 @@ export const SELECT_CONVERSACIONES =
   "id, tipo, nombre, dm_clave, created_at, chat_miembros(profile_id, last_read_at, profiles(id, nombre, email))";
 
 export const SELECT_MENSAJE =
-  "id, conversacion_id, remitente_id, contenido, adjunto_url, adjunto_tipo, adjunto_nombre, created_at";
+  "id, conversacion_id, remitente_id, contenido, adjunto_url, adjunto_tipo, adjunto_nombre, created_at, remitente:remitente_id(id, nombre, email)";

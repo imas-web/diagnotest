@@ -8,7 +8,7 @@ import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
-  perfilDe, nombreConversacion, iconoConversacion, tieneNoLeidos, SELECT_MENSAJE,
+  remitenteDe, nombreConversacion, iconoConversacion, tieneNoLeidos, SELECT_MENSAJE,
 } from "@/components/chat/chatShared";
 
 export function ChatApp({
@@ -111,7 +111,14 @@ export function ChatApp({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "chat_mensajes", filter: `conversacion_id=eq.${seleccionada}` },
         (payload) => {
-          const nuevo = payload.new as Mensaje;
+          // El evento realtime trae solo las columnas propias del mensaje,
+          // sin el remitente embebido (eso es cosa de PostgREST, no de
+          // Realtime) — se completa a mano desde lo que ya se tiene.
+          const cruda = payload.new as Mensaje;
+          const nuevo: Mensaje = {
+            ...cruda,
+            remitente: cruda.remitente_id === me.id ? me : contactos.find((c) => c.id === cruda.remitente_id) ?? null,
+          };
           setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
           marcarLeido(seleccionada);
         }
@@ -208,7 +215,7 @@ export function ChatApp({
     const id = crypto.randomUUID();
     const nuevo: Mensaje = {
       id, conversacion_id: seleccionada, remitente_id: me.id, contenido,
-      adjunto_url: null, adjunto_tipo: null, adjunto_nombre: null, created_at: new Date().toISOString(),
+      adjunto_url: null, adjunto_tipo: null, adjunto_nombre: null, created_at: new Date().toISOString(), remitente: me,
     };
     const { error } = await supabase
       .from("chat_mensajes")
@@ -241,7 +248,7 @@ export function ChatApp({
     const id = crypto.randomUUID();
     const nuevo: Mensaje = {
       id, conversacion_id: seleccionada, remitente_id: me.id, contenido: null,
-      adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name, created_at: new Date().toISOString(),
+      adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name, created_at: new Date().toISOString(), remitente: me,
     };
     const { error } = await supabase
       .from("chat_mensajes")
@@ -342,7 +349,7 @@ export function ChatApp({
               ) : (
                 mensajes.map((m) => {
                   const propio = m.remitente_id === me.id;
-                  const remitente = perfilDe(conversacionActual.chat_miembros.find((x) => x.profile_id === m.remitente_id));
+                  const remitente = remitenteDe(m);
                   return (
                     <div key={m.id} className={cn("flex", propio ? "justify-end" : "justify-start")}>
                       <div className={cn(
