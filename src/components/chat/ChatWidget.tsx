@@ -136,6 +136,8 @@ export function ChatWidget({ me }: { me: Perfil }) {
   }, [conversaciones, previewPorConversacion]);
 
   const conversacionActual = conversaciones.find((c) => c.id === seleccionada) ?? null;
+  const puedeEscribir =
+    conversacionActual?.tipo !== "general" || me.rol === "dueno" || me.rol === "super_admin";
 
   useEffect(() => {
     if (!mostrarNuevo || grupos.length) return;
@@ -336,20 +338,26 @@ export function ChatWidget({ me }: { me: Perfil }) {
                 )}
                 <div ref={mensajesEndRef} />
               </div>
-              <div className="shrink-0 bg-white border-t border-gy200 p-2 flex items-end gap-1.5">
-                <textarea
-                  value={texto}
-                  onChange={(e) => setTexto(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensaje(); } }}
-                  placeholder="Escribir…"
-                  rows={1}
-                  className="flex-1 resize-none px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[11.5px] bg-gy50 focus:outline-none focus:border-g500 max-h-20"
-                />
-                <button onClick={enviarMensaje} disabled={!texto.trim() || enviando}
-                  className="shrink-0 w-8 h-8 flex items-center justify-center rounded-[8px] bg-g700 text-white hover:bg-g800 disabled:opacity-40">
-                  <i className="ti ti-send text-[13px]" />
-                </button>
-              </div>
+              {puedeEscribir ? (
+                <div className="shrink-0 bg-white border-t border-gy200 p-2 flex items-end gap-1.5">
+                  <textarea
+                    value={texto}
+                    onChange={(e) => setTexto(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensaje(); } }}
+                    placeholder="Escribir…"
+                    rows={1}
+                    className="flex-1 resize-none px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[11.5px] bg-gy50 focus:outline-none focus:border-g500 max-h-20"
+                  />
+                  <button onClick={enviarMensaje} disabled={!texto.trim() || enviando}
+                    className="shrink-0 w-8 h-8 flex items-center justify-center rounded-[8px] bg-g700 text-white hover:bg-g800 disabled:opacity-40">
+                    <i className="ti ti-send text-[13px]" />
+                  </button>
+                </div>
+              ) : (
+                <div className="shrink-0 bg-gy50 border-t border-gy200 px-3 py-2.5 text-center text-[10.5px] text-gy400">
+                  Solo dueño y super admin pueden escribir en General
+                </div>
+              )}
             </>
           )}
         </div>

@@ -68,6 +68,10 @@ export function ChatApp({
   }, [conversaciones, previewPorConversacion]);
 
   const conversacionActual = conversaciones.find((c) => c.id === seleccionada) ?? null;
+  // Solo dueño y super_admin pueden escribir en General — el resto lo
+  // sigue leyendo, no cambia nada más.
+  const puedeEscribir =
+    conversacionActual?.tipo !== "general" || me.rol === "dueno" || me.rol === "super_admin";
 
   // Carga de mensajes + realtime al cambiar de conversación seleccionada.
   useEffect(() => {
@@ -352,27 +356,33 @@ export function ChatApp({
               <div ref={mensajesEndRef} />
             </div>
 
-            <div className="shrink-0 bg-white border-t border-gy200 p-3 flex items-end gap-2">
-              <input ref={fileInput} type="file" className="hidden" onChange={(e) => adjuntarArchivo(e.target.files)} />
-              <button type="button" onClick={() => fileInput.current?.click()} disabled={subiendoArchivo}
-                className="shrink-0 w-9 h-9 flex items-center justify-center rounded-[8px] border-2 border-gy200 text-gy400 hover:text-g600 hover:border-g400 disabled:opacity-50">
-                {subiendoArchivo
-                  ? <span className="w-3.5 h-3.5 border-2 border-gy300 border-t-g600 rounded-full animate-spin" />
-                  : <i className="ti ti-paperclip text-[16px]" />}
-              </button>
-              <textarea
-                value={texto}
-                onChange={(e) => setTexto(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensaje(); } }}
-                placeholder="Escribir un mensaje…"
-                rows={1}
-                className="flex-1 resize-none px-3 py-2 border-2 border-gy200 rounded-[8px] text-[12.5px] bg-gy50 focus:outline-none focus:border-g500 max-h-28"
-              />
-              <button onClick={enviarMensaje} disabled={!texto.trim() || enviando}
-                className="shrink-0 w-9 h-9 flex items-center justify-center rounded-[8px] bg-g700 text-white hover:bg-g800 disabled:opacity-40">
-                <i className="ti ti-send text-[15px]" />
-              </button>
-            </div>
+            {puedeEscribir ? (
+              <div className="shrink-0 bg-white border-t border-gy200 p-3 flex items-end gap-2">
+                <input ref={fileInput} type="file" className="hidden" onChange={(e) => adjuntarArchivo(e.target.files)} />
+                <button type="button" onClick={() => fileInput.current?.click()} disabled={subiendoArchivo}
+                  className="shrink-0 w-9 h-9 flex items-center justify-center rounded-[8px] border-2 border-gy200 text-gy400 hover:text-g600 hover:border-g400 disabled:opacity-50">
+                  {subiendoArchivo
+                    ? <span className="w-3.5 h-3.5 border-2 border-gy300 border-t-g600 rounded-full animate-spin" />
+                    : <i className="ti ti-paperclip text-[16px]" />}
+                </button>
+                <textarea
+                  value={texto}
+                  onChange={(e) => setTexto(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensaje(); } }}
+                  placeholder="Escribir un mensaje…"
+                  rows={1}
+                  className="flex-1 resize-none px-3 py-2 border-2 border-gy200 rounded-[8px] text-[12.5px] bg-gy50 focus:outline-none focus:border-g500 max-h-28"
+                />
+                <button onClick={enviarMensaje} disabled={!texto.trim() || enviando}
+                  className="shrink-0 w-9 h-9 flex items-center justify-center rounded-[8px] bg-g700 text-white hover:bg-g800 disabled:opacity-40">
+                  <i className="ti ti-send text-[15px]" />
+                </button>
+              </div>
+            ) : (
+              <div className="shrink-0 bg-gy50 border-t border-gy200 px-4 py-3 text-center text-[11.5px] text-gy400">
+                Solo dueño y super admin pueden escribir en General
+              </div>
+            )}
           </>
         )}
       </div>
