@@ -55,30 +55,34 @@ export function ChatbotWidget() {
 
   return (
     <>
-      {!open && (
-        <span className="fixed bottom-7 left-[76px] z-50 px-2 py-1 rounded-full bg-indigo-600 text-white text-[10px] font-semibold shadow-lg pointer-events-none whitespace-nowrap">
-          DiagnoLis
-        </span>
-      )}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? "Cerrar DiagnoLis" : "Hablar con DiagnoLis, el asistente"}
-        title="DiagnoLis · asistente automático (no es el chat interno)"
-        className="fixed bottom-5 left-5 z-50 w-14 h-14 rounded-full bg-indigo-600 text-white shadow-lg flex items-center justify-center hover:bg-indigo-700 transition-colors"
-      >
-        {open ? (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        ) : (
-          <i className="ti ti-user text-[26px]" />
+      {/* Abajo a la derecha, a la izquierda del botón del chat interno (verde):
+          en bottom-left chocaba con "Cerrar sesión" del menú lateral. */}
+      <div className="fixed bottom-5 right-24 z-50 flex flex-col items-center gap-1.5">
+        {!open && (
+          <span className="px-2 py-1 rounded-full bg-indigo-600 text-white text-[10px] font-semibold shadow-lg pointer-events-none whitespace-nowrap">
+            DiagnoLis
+          </span>
         )}
-      </button>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? "Cerrar DiagnoLis" : "Hablar con DiagnoLis, el asistente"}
+          title="DiagnoLis · asistente automático (no es el chat interno)"
+          className="w-14 h-14 rounded-full bg-indigo-600 text-white shadow-lg flex items-center justify-center hover:bg-indigo-700 transition-colors text-[26px] leading-none"
+        >
+          {open ? (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          ) : (
+            <span aria-hidden>🧑</span>
+          )}
+        </button>
+      </div>
 
       {open && (
-        <div className="fixed bottom-24 left-5 z-50 w-[min(380px,calc(100vw-2.5rem))] h-[min(560px,calc(100vh-8rem))] bg-white rounded-xl shadow-2xl border border-gy200 flex flex-col overflow-hidden">
+        <div className="fixed bottom-24 right-24 z-50 w-[min(380px,calc(100vw-2.5rem))] h-[min(560px,calc(100vh-8rem))] bg-white rounded-xl shadow-2xl border border-gy200 flex flex-col overflow-hidden">
           <div className="bg-indigo-600 text-white px-4 py-3 shrink-0">
-            <p className="font-semibold text-sm flex items-center gap-1.5"><i className="ti ti-user text-[16px]" /> DiagnoLis</p>
+            <p className="font-semibold text-sm flex items-center gap-1.5"><span aria-hidden>🧑</span> DiagnoLis</p>
             <p className="text-xs text-indigo-100">Asistente automático — preguntá sobre retiros, controles, pedidos o gastos. No es el chat de la empresa.</p>
           </div>
 
