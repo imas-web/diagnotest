@@ -240,7 +240,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? "Cerrar chat" : "Abrir chat interno"}
         title="Chat interno de Diagnotest"
-        className="fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full bg-g700 text-white shadow-lg flex items-center justify-center hover:bg-g800 transition-colors relative"
+        className="fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full bg-g700 text-white shadow-lg flex items-center justify-center hover:bg-g800 transition-colors"
       >
         {open ? (
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
