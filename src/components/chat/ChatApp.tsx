@@ -180,25 +180,25 @@ export function ChatApp({
     const existente = conversaciones.find((c) => c.dm_clave === clave);
     if (existente) { setSeleccionada(existente.id); setMostrarNuevo(false); return; }
 
-    const { data: nueva, error } = await supabase
-      .from("chat_conversaciones")
-      .insert({ tipo: "dm", dm_clave: clave })
-      .select("id")
-      .single();
-    if (error || !nueva) { toast("error", "No se pudo iniciar la conversación"); return; }
-
-    const { error: miembrosErr } = await supabase
-      .from("chat_miembros")
-      .insert([{ conversacion_id: nueva.id, profile_id: me.id }, { conversacion_id: nueva.id, profile_id: otroId }]);
-    if (miembrosErr) { toast("error", "No se pudo iniciar la conversación"); return; }
+    // Se resuelve en el servidor (con service role): recién creada, la
+    // conversación no tiene miembros todavía, y la política de SELECT exige
+    // ser miembro (o ser General) — armarla en dos inserts desde el navegador
+    // fallaba porque ni el propio creador podía releerla para confirmar.
+    const res = await fetch("/api/chat/dm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ otroId }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.conversacionId) { toast("error", json.error ?? "No se pudo iniciar la conversación"); return; }
 
     const otro = contactos.find((c) => c.id === otroId) ?? null;
     const nuevaConv: Conversacion = {
-      id: nueva.id, tipo: "dm", nombre: null, dm_clave: clave, created_at: new Date().toISOString(),
+      id: json.conversacionId, tipo: "dm", nombre: null, dm_clave: clave, created_at: new Date().toISOString(),
       chat_miembros: [{ profile_id: me.id, profiles: me }, { profile_id: otroId, profiles: otro }],
     };
     setConversaciones((prev) => [...prev, nuevaConv]);
-    setSeleccionada(nueva.id);
+    setSeleccionada(json.conversacionId);
     setMostrarNuevo(false);
     setBuscarContacto("");
   }
