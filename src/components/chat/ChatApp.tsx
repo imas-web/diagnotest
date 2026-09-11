@@ -207,12 +207,19 @@ export function ChatApp({
     const contenido = texto.trim();
     if (!contenido || !seleccionada || enviando) return;
     setEnviando(true);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("chat_mensajes")
-      .insert({ conversacion_id: seleccionada, remitente_id: me.id, contenido });
+      .insert({ conversacion_id: seleccionada, remitente_id: me.id, contenido })
+      .select("id, conversacion_id, remitente_id, contenido, adjunto_url, adjunto_tipo, adjunto_nombre, created_at")
+      .single();
     setEnviando(false);
     if (error) { toast("error", "No se pudo enviar el mensaje"); return; }
     setTexto("");
+    // Se agrega en el momento en vez de esperar al evento realtime (que
+    // puede tardar o no llegar): el dedupe por id evita que se duplique
+    // cuando el propio evento realtime también llega.
+    const nuevo = data as Mensaje;
+    setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
   }
 
   async function adjuntarArchivo(files: FileList | null) {
@@ -232,12 +239,16 @@ export function ChatApp({
     }
     const url = supabase.storage.from("chat-adjuntos").getPublicUrl(path).data.publicUrl;
     const tipo = file.type.startsWith("image/") ? "imagen" : "archivo";
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("chat_mensajes")
-      .insert({ conversacion_id: seleccionada, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name });
+      .insert({ conversacion_id: seleccionada, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name })
+      .select("id, conversacion_id, remitente_id, contenido, adjunto_url, adjunto_tipo, adjunto_nombre, created_at")
+      .single();
     setSubiendoArchivo(false);
     if (fileInput.current) fileInput.current.value = "";
-    if (error) toast("error", "No se pudo enviar el adjunto");
+    if (error) { toast("error", "No se pudo enviar el adjunto"); return; }
+    const nuevo = data as Mensaje;
+    setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
   }
 
   const contactosFiltrados = contactos.filter((c) => {
