@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { OfflineBanner } from "@/components/offline/SyncIndicator";
 import { ChatbotWidget } from "@/components/chatbot/ChatbotWidget";
+import { ChatWidget } from "@/components/chat/ChatWidget";
 import type { Profile } from "@/types";
 
 export function DashboardShell({
@@ -57,6 +58,7 @@ export function DashboardShell({
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
 
+      {profile.rol !== "personal_logistica" && <ChatWidget me={profile} />}
       <ChatbotWidget />
     </div>
   );

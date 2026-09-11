@@ -6,67 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
-
-interface Perfil {
-  id: string;
-  nombre: string;
-  email: string;
-  rol?: string;
-}
-
-interface Miembro {
-  profile_id: string;
-  profiles: Perfil | Perfil[] | null;
-}
-
-interface Conversacion {
-  id: string;
-  tipo: "dm" | "grupo" | "general";
-  nombre: string | null;
-  dm_clave: string | null;
-  created_at: string;
-  chat_miembros: Miembro[];
-}
-
-// Supabase devuelve la relación embebida como array cuando no puede inferir
-// que es 1-a-1 a partir del select plano (sin tipos generados); acá se
-// normaliza a un solo perfil o null.
-function perfilDe(m: Miembro | undefined): Perfil | null {
-  if (!m) return null;
-  return Array.isArray(m.profiles) ? (m.profiles[0] ?? null) : m.profiles;
-}
-
-interface Mensaje {
-  id: string;
-  conversacion_id: string;
-  remitente_id: string;
-  contenido: string | null;
-  adjunto_url: string | null;
-  adjunto_tipo: string | null;
-  adjunto_nombre: string | null;
-  created_at: string;
-}
-
-interface UltimoMensaje {
-  conversacion_id: string;
-  contenido: string | null;
-  adjunto_tipo: string | null;
-  remitente_id: string;
-  created_at: string;
-}
-
-function nombreConversacion(c: Conversacion, meId: string): string {
-  if (c.tipo === "general") return "General";
-  if (c.tipo === "grupo") return c.nombre ?? "Grupo";
-  const otro = perfilDe(c.chat_miembros.find((m) => m.profile_id !== meId));
-  return otro?.nombre ?? "Conversación";
-}
-
-function iconoConversacion(c: Conversacion): string {
-  if (c.tipo === "general") return "ti-users";
-  if (c.tipo === "grupo") return "ti-hash";
-  return "ti-user";
-}
+import {
+  type Perfil, type Conversacion, type Mensaje, type UltimoMensaje,
+  perfilDe, nombreConversacion, iconoConversacion, SELECT_MENSAJE,
+} from "@/components/chat/chatShared";
 
 export function ChatApp({
   me,
@@ -128,12 +71,13 @@ export function ChatApp({
     setCargandoMensajes(true);
     supabase
       .from("chat_mensajes")
-      .select("id, conversacion_id, remitente_id, contenido, adjunto_url, adjunto_tipo, adjunto_nombre, created_at")
+      .select(SELECT_MENSAJE)
       .eq("conversacion_id", seleccionada)
       .order("created_at", { ascending: true })
       .limit(500)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (!activo) return;
+        if (error) toast("error", "No se pudieron cargar los mensajes");
         setMensajes((data ?? []) as Mensaje[]);
         setCargandoMensajes(false);
       });

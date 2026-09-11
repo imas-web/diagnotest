@@ -1,0 +1,363 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
+import { cn, initials } from "@/lib/utils/format";
+import { formatTime } from "@/lib/utils/dates";
+import { toast } from "@/components/ui/ToastNotification";
+import {
+  type Perfil, type Conversacion, type Mensaje, type UltimoMensaje,
+  nombreConversacion, iconoConversacion, SELECT_CONVERSACIONES, SELECT_MENSAJE,
+} from "@/components/chat/chatShared";
+
+// Acceso rápido al chat interno sin salir de la pantalla en la que se está
+// (ej. mientras se está en Configuración). El chat completo (más canales,
+// búsqueda, etc.) sigue en /chat — este widget es un atajo, no un
+// reemplazo, así que se oculta ahí para no duplicar la misma UI.
+export function ChatWidget({ me }: { me: Perfil }) {
+  const pathname = usePathname();
+  const supabase = useMemo(() => createClient(), []);
+
+  const [open, setOpen] = useState(false);
+  const [cargado, setCargado] = useState(false);
+  const [conversaciones, setConversaciones] = useState<Conversacion[]>([]);
+  const [contactos, setContactos] = useState<Perfil[]>([]);
+  const [ultimos, setUltimos] = useState<UltimoMensaje[]>([]);
+  const [seleccionada, setSeleccionada] = useState<string | null>(null);
+  const [mensajes, setMensajes] = useState<Mensaje[]>([]);
+  const [cargandoMensajes, setCargandoMensajes] = useState(false);
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [mostrarNuevo, setMostrarNuevo] = useState(false);
+  const [buscarContacto, setBuscarContacto] = useState("");
+
+  const mensajesEndRef = useRef<HTMLDivElement>(null);
+
+  async function cargarTodo() {
+    const [{ data: convs }, { data: cons }] = await Promise.all([
+      supabase.from("chat_conversaciones").select(SELECT_CONVERSACIONES).order("created_at", { ascending: true }),
+      supabase.from("profiles").select("id, nombre, email, rol")
+        .neq("id", me.id).neq("rol", "personal_logistica").eq("activo", true).order("nombre"),
+    ]);
+    setConversaciones((convs ?? []) as unknown as Conversacion[]);
+    setContactos(cons ?? []);
+    const ids = (convs ?? []).map((c) => c.id);
+    if (ids.length) {
+      const { data: ult } = await supabase
+        .from("chat_mensajes")
+        .select("conversacion_id, contenido, adjunto_tipo, remitente_id, created_at")
+        .in("conversacion_id", ids)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      setUltimos(ult ?? []);
+    }
+    setCargado(true);
+  }
+
+  // Se carga recién al abrir por primera vez, no de arranque en cada
+  // pantalla del dashboard.
+  useEffect(() => {
+    if (open && !cargado) cargarTodo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, cargado]);
+
+  // Se refresca la lista si alguien me suma a una conversación nueva,
+  // esté abierto el widget o no (mismo mecanismo que la pantalla completa).
+  useEffect(() => {
+    const canal = supabase
+      .channel(`chat-widget-miembros-${me.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_miembros", filter: `profile_id=eq.${me.id}` },
+        () => { if (cargado) cargarTodo(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me.id, supabase, cargado]);
+
+  useEffect(() => {
+    if (!seleccionada) { setMensajes([]); return; }
+    let activo = true;
+    setCargandoMensajes(true);
+    supabase
+      .from("chat_mensajes")
+      .select(SELECT_MENSAJE)
+      .eq("conversacion_id", seleccionada)
+      .order("created_at", { ascending: true })
+      .limit(200)
+      .then(({ data, error }) => {
+        if (!activo) return;
+        if (error) toast("error", "No se pudieron cargar los mensajes");
+        setMensajes((data ?? []) as Mensaje[]);
+        setCargandoMensajes(false);
+      });
+
+    const canal = supabase
+      .channel(`chat-widget-${seleccionada}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_mensajes", filter: `conversacion_id=eq.${seleccionada}` },
+        (payload) => {
+          const nuevo = payload.new as Mensaje;
+          setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
+        }
+      )
+      .subscribe();
+
+    return () => { activo = false; supabase.removeChannel(canal); };
+  }, [seleccionada, supabase]);
+
+  useEffect(() => {
+    mensajesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [mensajes]);
+
+  const previewPorConversacion = useMemo(() => {
+    const m = new Map<string, UltimoMensaje>();
+    for (const u of ultimos) if (!m.has(u.conversacion_id)) m.set(u.conversacion_id, u);
+    return m;
+  }, [ultimos]);
+
+  const listaOrdenada = useMemo(() => {
+    return [...conversaciones].sort((a, b) => {
+      if (a.tipo === "general") return -1;
+      if (b.tipo === "general") return 1;
+      if (a.tipo !== b.tipo) return a.tipo === "grupo" ? -1 : 1;
+      const ta = previewPorConversacion.get(a.id)?.created_at ?? a.created_at;
+      const tb = previewPorConversacion.get(b.id)?.created_at ?? b.created_at;
+      return tb.localeCompare(ta);
+    });
+  }, [conversaciones, previewPorConversacion]);
+
+  const conversacionActual = conversaciones.find((c) => c.id === seleccionada) ?? null;
+
+  async function abrirDM(otroId: string) {
+    const clave = [me.id, otroId].sort().join("|");
+    const existente = conversaciones.find((c) => c.dm_clave === clave);
+    if (existente) { setSeleccionada(existente.id); setMostrarNuevo(false); return; }
+
+    const res = await fetch("/api/chat/dm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ otroId }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.conversacionId) { toast("error", json.error ?? "No se pudo iniciar la conversación"); return; }
+
+    const otro = contactos.find((c) => c.id === otroId) ?? null;
+    const nuevaConv: Conversacion = {
+      id: json.conversacionId, tipo: "dm", nombre: null, dm_clave: clave, created_at: new Date().toISOString(),
+      chat_miembros: [{ profile_id: me.id, profiles: me }, { profile_id: otroId, profiles: otro }],
+    };
+    setConversaciones((prev) => [...prev, nuevaConv]);
+    setSeleccionada(json.conversacionId);
+    setMostrarNuevo(false);
+    setBuscarContacto("");
+  }
+
+  async function enviarMensaje() {
+    const contenido = texto.trim();
+    if (!contenido || !seleccionada || enviando) return;
+    setEnviando(true);
+    const id = crypto.randomUUID();
+    const nuevo: Mensaje = {
+      id, conversacion_id: seleccionada, remitente_id: me.id, contenido,
+      adjunto_url: null, adjunto_tipo: null, adjunto_nombre: null, created_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from("chat_mensajes")
+      .insert({ id, conversacion_id: seleccionada, remitente_id: me.id, contenido });
+    setEnviando(false);
+    if (error) { toast("error", error.message || "No se pudo enviar el mensaje"); return; }
+    setTexto("");
+    setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
+  }
+
+  const contactosFiltrados = contactos.filter((c) => {
+    const q = buscarContacto.trim().toLowerCase();
+    if (!q) return true;
+    return c.nombre.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+  });
+
+  if (pathname === "/chat") return null;
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label={open ? "Cerrar chat" : "Abrir chat interno"}
+        title="Chat interno de Diagnotest"
+        className="fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full bg-g700 text-white shadow-lg flex items-center justify-center hover:bg-g800 transition-colors"
+      >
+        {open ? (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        ) : (
+          <i className="ti ti-message-circle text-[26px]" />
+        )}
+      </button>
+
+      {open && (
+        <div className="fixed bottom-24 right-5 z-50 w-[min(340px,calc(100vw-2.5rem))] h-[min(480px,calc(100vh-8rem))] bg-white rounded-xl shadow-2xl border border-gy200 flex flex-col overflow-hidden">
+          <div className="bg-g700 text-white px-3 py-2.5 shrink-0 flex items-center gap-2">
+            {seleccionada ? (
+              <button onClick={() => setSeleccionada(null)} className="text-white/90 hover:text-white shrink-0" aria-label="Volver">
+                <i className="ti ti-arrow-left text-[16px]" />
+              </button>
+            ) : (
+              <i className="ti ti-message-circle text-[16px] shrink-0" />
+            )}
+            <span className="font-semibold text-[13px] flex-1 truncate">
+              {seleccionada && conversacionActual ? nombreConversacion(conversacionActual, me.id) : "Chat interno"}
+            </span>
+            <Link href="/chat" className="text-white/80 hover:text-white shrink-0" title="Abrir pantalla completa">
+              <i className="ti ti-arrows-diagonal text-[15px]" />
+            </Link>
+          </div>
+
+          {!cargado ? (
+            <div className="flex-1 flex items-center justify-center text-[12px] text-gy400">Cargando…</div>
+          ) : !seleccionada ? (
+            <>
+              <div className="p-2 border-b border-gy100 shrink-0">
+                <button
+                  onClick={() => setMostrarNuevo(true)}
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11.5px] font-medium bg-g50 text-g700 rounded-[8px] hover:bg-g100"
+                >
+                  <i className="ti ti-edit text-[13px]" /> Nuevo mensaje
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {listaOrdenada.map((c) => {
+                  const preview = previewPorConversacion.get(c.id);
+                  const nombre = nombreConversacion(c, me.id);
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setSeleccionada(c.id)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left border-b border-gy50 hover:bg-gy50"
+                    >
+                      <div className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold",
+                        c.tipo === "dm" ? "bg-gy100 text-gy600" : "bg-g100 text-g700"
+                      )}>
+                        {c.tipo === "dm" ? initials(nombre) : <i className={cn("ti", iconoConversacion(c), "text-[13px]")} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12px] font-semibold text-gy900 truncate">{nombre}</div>
+                        <div className="text-[10.5px] text-gy400 truncate">
+                          {preview
+                            ? preview.adjunto_tipo
+                              ? (preview.remitente_id === me.id ? "Vos: " : "") + (preview.adjunto_tipo === "imagen" ? "📷 Foto" : "📎 Archivo")
+                              : (preview.remitente_id === me.id ? "Vos: " : "") + (preview.contenido ?? "")
+                            : "Sin mensajes todavía"}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+                {!listaOrdenada.length && (
+                  <div className="p-5 text-center text-[11.5px] text-gy400">Sin conversaciones todavía</div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-2 bg-gy50">
+                {cargandoMensajes ? (
+                  <div className="text-center text-[11.5px] text-gy400 py-4">Cargando…</div>
+                ) : !mensajes.length ? (
+                  <div className="text-center text-[11.5px] text-gy400 py-4">Ningún mensaje todavía</div>
+                ) : (
+                  mensajes.map((m) => {
+                    const propio = m.remitente_id === me.id;
+                    return (
+                      <div key={m.id} className={cn("flex", propio ? "justify-end" : "justify-start")}>
+                        <div className={cn(
+                          "max-w-[80%] rounded-[10px] px-2.5 py-1.5 text-[11.5px] shadow-sm",
+                          propio ? "bg-g700 text-white rounded-br-[3px]" : "bg-white text-gy900 rounded-bl-[3px] border border-gy200"
+                        )}>
+                          {m.adjunto_url && m.adjunto_tipo === "imagen" && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={m.adjunto_url} alt={m.adjunto_nombre ?? "Adjunto"} className="rounded-[6px] max-w-full mb-1" />
+                          )}
+                          {m.adjunto_url && m.adjunto_tipo !== "imagen" && (
+                            <a href={m.adjunto_url} target="_blank" rel="noopener noreferrer"
+                              className={cn("flex items-center gap-1 underline mb-1", propio ? "text-white" : "text-g700")}>
+                              <i className="ti ti-paperclip text-[12px]" /> {m.adjunto_nombre ?? "Archivo"}
+                            </a>
+                          )}
+                          {m.contenido && <div className="whitespace-pre-wrap break-words">{m.contenido}</div>}
+                          <div className={cn("text-[9px] mt-0.5 text-right", propio ? "text-white/70" : "text-gy400")}>
+                            {formatTime(m.created_at)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={mensajesEndRef} />
+              </div>
+              <div className="shrink-0 bg-white border-t border-gy200 p-2 flex items-end gap-1.5">
+                <textarea
+                  value={texto}
+                  onChange={(e) => setTexto(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensaje(); } }}
+                  placeholder="Escribir…"
+                  rows={1}
+                  className="flex-1 resize-none px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[11.5px] bg-gy50 focus:outline-none focus:border-g500 max-h-20"
+                />
+                <button onClick={enviarMensaje} disabled={!texto.trim() || enviando}
+                  className="shrink-0 w-8 h-8 flex items-center justify-center rounded-[8px] bg-g700 text-white hover:bg-g800 disabled:opacity-40">
+                  <i className="ti ti-send text-[13px]" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {mostrarNuevo && (
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4" onClick={() => setMostrarNuevo(false)}>
+          <div className="bg-white rounded-[14px] shadow-xl w-full max-w-[360px] max-h-[60vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-3 border-b border-gy100 flex items-center justify-between">
+              <span className="text-[13px] font-semibold text-gy900">Nuevo mensaje</span>
+              <button onClick={() => setMostrarNuevo(false)} className="text-gy400 hover:text-gy700">
+                <i className="ti ti-x text-[16px]" />
+              </button>
+            </div>
+            <div className="p-2.5 border-b border-gy100">
+              <input
+                autoFocus
+                value={buscarContacto}
+                onChange={(e) => setBuscarContacto(e.target.value)}
+                placeholder="Buscar por nombre o mail…"
+                className="w-full px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[11.5px] bg-gy50 focus:outline-none focus:border-g500"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {contactosFiltrados.map((c) => (
+                <button key={c.id} onClick={() => abrirDM(c.id)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gy50 border-b border-gy50">
+                  <div className="w-7 h-7 rounded-full bg-gy100 text-gy600 flex items-center justify-center text-[9px] font-bold shrink-0">
+                    {initials(c.nombre)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11.5px] font-medium text-gy900 truncate">{c.nombre}</div>
+                    <div className="text-[10px] text-gy400 truncate">{c.email}</div>
+                  </div>
+                </button>
+              ))}
+              {!contactosFiltrados.length && (
+                <div className="p-5 text-center text-[11.5px] text-gy400">Sin resultados</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
