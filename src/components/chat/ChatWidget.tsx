@@ -40,15 +40,19 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const mensajesEndRef = useRef<HTMLDivElement>(null);
 
   async function cargarTodo() {
-    const [{ data: convs, error: errConvs }, { data: cons, error: errCons }] = await Promise.all([
+    // Los contactos se piden a /api/chat/contactos (service role) porque la
+    // política de SELECT de profiles no deja leer perfiles ajenos a
+    // cualquier rol — con el cliente de sesión, algunos roles se quedaban
+    // sin resultados (veían Grupos, que sí se resuelve así, pero nunca
+    // Personas).
+    const [{ data: convs, error: errConvs }, contactosRes] = await Promise.all([
       supabase.from("chat_conversaciones").select(SELECT_CONVERSACIONES).order("created_at", { ascending: true }),
-      supabase.from("profiles").select("id, nombre, email, rol")
-        .neq("id", me.id).neq("rol", "personal_logistica").eq("activo", true).order("nombre"),
+      fetch("/api/chat/contactos").then((r) => r.json()).catch(() => ({ error: "No se pudo conectar" })),
     ]);
     if (errConvs) toast("error", "No se pudieron cargar las conversaciones: " + errConvs.message);
-    if (errCons) toast("error", "No se pudieron cargar los contactos: " + errCons.message);
+    if (contactosRes.error) toast("error", "No se pudieron cargar los contactos: " + contactosRes.error);
     setConversaciones((convs ?? []) as unknown as Conversacion[]);
-    setContactos(cons ?? []);
+    setContactos(contactosRes.contactos ?? []);
     const ids = (convs ?? []).map((c) => c.id);
     if (ids.length) {
       const { data: ult } = await supabase

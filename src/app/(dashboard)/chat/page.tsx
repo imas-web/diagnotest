@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { ChatApp } from "@/components/chat/ChatApp";
 import { landingPathForRole } from "@/lib/utils/roles";
@@ -15,12 +16,19 @@ export default async function ChatPage() {
   const { data: me } = await supabase.from("profiles").select("id, nombre, email, rol").eq("id", user.id).single();
   if (!me || me.rol === "personal_logistica") redirect(landingPathForRole(me?.rol));
 
+  const admin = createAdminClient();
+
   const [{ data: conversaciones }, { data: contactos, error: errorContactos }] = await Promise.all([
     supabase
       .from("chat_conversaciones")
       .select(SELECT_CONVERSACIONES)
       .order("created_at", { ascending: true }),
-    supabase
+    // Con el cliente admin a propósito: la política de SELECT de profiles
+    // no deja leer perfiles ajenos a cualquier rol (solo a algunos, ej.
+    // super_admin), así que con el cliente de sesión esto se quedaba sin
+    // resultados para el resto — el síntoma era "Nuevo mensaje" mostrando
+    // solo Grupos (que ya se resolvía con admin) y nunca Personas.
+    admin
       .from("profiles")
       .select("id, nombre, email, rol")
       .neq("id", user.id)
