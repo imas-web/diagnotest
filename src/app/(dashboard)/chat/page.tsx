@@ -15,7 +15,7 @@ export default async function ChatPage() {
   const { data: me } = await supabase.from("profiles").select("id, nombre, email, rol").eq("id", user.id).single();
   if (!me || me.rol === "personal_logistica") redirect(landingPathForRole(me?.rol));
 
-  const [{ data: conversaciones }, { data: contactos }] = await Promise.all([
+  const [{ data: conversaciones }, { data: contactos, error: errorContactos }] = await Promise.all([
     supabase
       .from("chat_conversaciones")
       .select(SELECT_CONVERSACIONES)
@@ -49,6 +49,7 @@ export default async function ChatPage() {
         conversacionesIniciales={conversaciones ?? []}
         contactos={contactos ?? []}
         ultimosMensajes={ultimosMensajes ?? []}
+        errorContactos={errorContactos?.message ?? null}
       />
     </div>
   );

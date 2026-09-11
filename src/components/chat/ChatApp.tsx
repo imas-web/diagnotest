@@ -16,14 +16,21 @@ export function ChatApp({
   conversacionesIniciales,
   contactos,
   ultimosMensajes,
+  errorContactos,
 }: {
   me: Perfil;
   conversacionesIniciales: Conversacion[];
   contactos: Perfil[];
   ultimosMensajes: UltimoMensaje[];
+  errorContactos?: string | null;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    if (errorContactos) toast("error", "No se pudieron cargar los contactos: " + errorContactos);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [conversaciones, setConversaciones] = useState(conversacionesIniciales);
   useEffect(() => setConversaciones(conversacionesIniciales), [conversacionesIniciales]);

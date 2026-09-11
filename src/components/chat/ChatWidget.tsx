@@ -40,11 +40,13 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const mensajesEndRef = useRef<HTMLDivElement>(null);
 
   async function cargarTodo() {
-    const [{ data: convs }, { data: cons }] = await Promise.all([
+    const [{ data: convs, error: errConvs }, { data: cons, error: errCons }] = await Promise.all([
       supabase.from("chat_conversaciones").select(SELECT_CONVERSACIONES).order("created_at", { ascending: true }),
       supabase.from("profiles").select("id, nombre, email, rol")
         .neq("id", me.id).neq("rol", "personal_logistica").eq("activo", true).order("nombre"),
     ]);
+    if (errConvs) toast("error", "No se pudieron cargar las conversaciones: " + errConvs.message);
+    if (errCons) toast("error", "No se pudieron cargar los contactos: " + errCons.message);
     setConversaciones((convs ?? []) as unknown as Conversacion[]);
     setContactos(cons ?? []);
     const ids = (convs ?? []).map((c) => c.id);
