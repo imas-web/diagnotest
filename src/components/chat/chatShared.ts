@@ -7,6 +7,7 @@ export interface Perfil {
 
 export interface Miembro {
   profile_id: string;
+  last_read_at?: string;
   profiles: Perfil | Perfil[] | null;
 }
 
@@ -64,8 +65,18 @@ export function iconoConversacion(c: Conversacion): string {
   return "ti-user";
 }
 
+// Sin leer: el último mensaje es más nuevo que mi last_read_at y no lo
+// mandé yo mismo. Sin fila propia en chat_miembros (grupo ajeno abierto
+// solo para mandar, o General) no hay nada que marcar como leído.
+export function tieneNoLeidos(c: Conversacion, meId: string, ultimo: UltimoMensaje | undefined): boolean {
+  if (!ultimo || ultimo.remitente_id === meId) return false;
+  const miMiembro = c.chat_miembros.find((m) => m.profile_id === meId);
+  if (!miMiembro?.last_read_at) return false;
+  return ultimo.created_at > miMiembro.last_read_at;
+}
+
 export const SELECT_CONVERSACIONES =
-  "id, tipo, nombre, dm_clave, created_at, chat_miembros(profile_id, profiles(id, nombre, email))";
+  "id, tipo, nombre, dm_clave, created_at, chat_miembros(profile_id, last_read_at, profiles(id, nombre, email))";
 
 export const SELECT_MENSAJE =
   "id, conversacion_id, remitente_id, contenido, adjunto_url, adjunto_tipo, adjunto_nombre, created_at";

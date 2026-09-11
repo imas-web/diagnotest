@@ -8,7 +8,7 @@ import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
-  perfilDe, nombreConversacion, iconoConversacion, SELECT_MENSAJE,
+  perfilDe, nombreConversacion, iconoConversacion, tieneNoLeidos, SELECT_MENSAJE,
 } from "@/components/chat/chatShared";
 
 export function ChatApp({
@@ -73,6 +73,19 @@ export function ChatApp({
   const puedeEscribir =
     conversacionActual?.tipo !== "general" || me.rol === "dueno" || me.rol === "super_admin";
 
+  // Marca como leída la conversación (fila propia en chat_miembros): sin
+  // fila (grupo ajeno abierto solo para mandar, o General) no actualiza
+  // nada, no hace falta filtrar antes de llamarla.
+  function marcarLeido(conversacionId: string) {
+    const ahora = new Date().toISOString();
+    setConversaciones((prev) => prev.map((c) => c.id !== conversacionId ? c : {
+      ...c,
+      chat_miembros: c.chat_miembros.map((m) => m.profile_id === me.id ? { ...m, last_read_at: ahora } : m),
+    }));
+    supabase.from("chat_miembros").update({ last_read_at: ahora })
+      .eq("conversacion_id", conversacionId).eq("profile_id", me.id).then();
+  }
+
   // Carga de mensajes + realtime al cambiar de conversación seleccionada.
   useEffect(() => {
     if (!seleccionada) { setMensajes([]); return; }
@@ -90,6 +103,7 @@ export function ChatApp({
         setMensajes((data ?? []) as Mensaje[]);
         setCargandoMensajes(false);
       });
+    marcarLeido(seleccionada);
 
     const canal = supabase
       .channel(`chat-${seleccionada}`)
@@ -99,6 +113,7 @@ export function ChatApp({
         (payload) => {
           const nuevo = payload.new as Mensaje;
           setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
+          marcarLeido(seleccionada);
         }
       )
       .subscribe();
@@ -107,6 +122,7 @@ export function ChatApp({
       activo = false;
       supabase.removeChannel(canal);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seleccionada, supabase]);
 
   // Avisa cuando llega una conversación nueva (alguien inició un DM conmigo,
@@ -265,6 +281,7 @@ export function ChatApp({
             const preview = previewPorConversacion.get(c.id);
             const nombre = nombreConversacion(c, me.id);
             const activa = c.id === seleccionada;
+            const noLeida = tieneNoLeidos(c, me.id, preview);
             return (
               <button
                 key={c.id}
@@ -281,8 +298,8 @@ export function ChatApp({
                   {c.tipo === "dm" ? initials(nombre) : <i className={cn("ti", iconoConversacion(c), "text-[15px]")} />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12.5px] font-semibold text-gy900 truncate">{nombre}</div>
-                  <div className="text-[11px] text-gy400 truncate">
+                  <div className={cn("text-[12.5px] truncate", noLeida ? "font-bold text-gy900" : "font-semibold text-gy900")}>{nombre}</div>
+                  <div className={cn("text-[11px] truncate", noLeida ? "text-gy700 font-medium" : "text-gy400")}>
                     {preview
                       ? preview.adjunto_tipo
                         ? (preview.remitente_id === me.id ? "Vos: " : "") + (preview.adjunto_tipo === "imagen" ? "📷 Foto" : "📎 Archivo")
@@ -290,6 +307,7 @@ export function ChatApp({
                       : "Sin mensajes todavía"}
                   </div>
                 </div>
+                {noLeida && <span className="w-2 h-2 rounded-full bg-g600 shrink-0" />}
               </button>
             );
           })}

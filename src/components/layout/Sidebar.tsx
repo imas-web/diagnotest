@@ -117,6 +117,7 @@ export function Sidebar({ profile, onNavigate }: Props) {
   const [cancelCount, setCancelCount] = useState(0);
   const [cobPendCount, setCobPendCount] = useState(0);
   const [cobDifCount, setCobDifCount] = useState(0);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
   const rol = profile.rol;
   const refreshBadges = useCallback(() => {
@@ -174,7 +175,35 @@ export function Sidebar({ profile, onNavigate }: Props) {
         .eq("estado", "diferencia")
         .then(({ count }) => setCobDifCount(count ?? 0));
     }
-  }, [rol]);
+
+    // Chat sin leer: conversaciones propias cuyo último mensaje es más
+    // nuevo que mi last_read_at y no lo mandé yo.
+    if (rol !== "personal_logistica") {
+      supabase
+        .from("chat_miembros")
+        .select("conversacion_id, last_read_at")
+        .eq("profile_id", profile.id)
+        .then(async ({ data: miembros }) => {
+          if (!miembros?.length) { setChatUnreadCount(0); return; }
+          const ids = miembros.map((m) => m.conversacion_id);
+          const { data: mensajes } = await supabase
+            .from("chat_mensajes")
+            .select("conversacion_id, created_at, remitente_id")
+            .in("conversacion_id", ids)
+            .order("created_at", { ascending: false })
+            .limit(500);
+          const ultimoPorConversacion = new Map<string, { created_at: string; remitente_id: string }>();
+          for (const m of mensajes ?? []) {
+            if (!ultimoPorConversacion.has(m.conversacion_id)) ultimoPorConversacion.set(m.conversacion_id, m);
+          }
+          const noLeidas = miembros.filter((m) => {
+            const ultimo = ultimoPorConversacion.get(m.conversacion_id);
+            return ultimo && ultimo.remitente_id !== profile.id && ultimo.created_at > m.last_read_at;
+          });
+          setChatUnreadCount(noLeidas.length);
+        });
+    }
+  }, [rol, profile.id]);
 
   useEffect(() => {
     refreshBadges();
@@ -218,6 +247,7 @@ export function Sidebar({ profile, onNavigate }: Props) {
             : item.href === "/cancelados" ? (cancelCount || undefined)
             : item.href === "/cobranzas" ? (cobPendCount || undefined)
             : item.href === "/cobranzas/diferencias" ? (cobDifCount || undefined)
+            : item.href === "/chat" ? (chatUnreadCount || undefined)
             : item.badge;
           return (
             <Link

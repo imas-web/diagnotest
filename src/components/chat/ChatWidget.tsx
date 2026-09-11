@@ -9,7 +9,7 @@ import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
-  nombreConversacion, iconoConversacion, SELECT_CONVERSACIONES, SELECT_MENSAJE,
+  nombreConversacion, iconoConversacion, tieneNoLeidos, SELECT_CONVERSACIONES, SELECT_MENSAJE,
 } from "@/components/chat/chatShared";
 
 // Acceso rápido al chat interno sin salir de la pantalla en la que se está
@@ -60,12 +60,12 @@ export function ChatWidget({ me }: { me: Perfil }) {
     setCargado(true);
   }
 
-  // Se carga recién al abrir por primera vez, no de arranque en cada
-  // pantalla del dashboard.
+  // Se carga de entrada (no solo al abrir) para poder mostrar la cantidad
+  // de mensajes sin leer en el botón cerrado, sin tener que abrir el chat.
   useEffect(() => {
-    if (open && !cargado) cargarTodo();
+    cargarTodo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, cargado]);
+  }, []);
 
   // Se refresca la lista si alguien me suma a una conversación nueva,
   // esté abierto el widget o no (mismo mecanismo que la pantalla completa).
@@ -81,6 +81,16 @@ export function ChatWidget({ me }: { me: Perfil }) {
     return () => { supabase.removeChannel(canal); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me.id, supabase, cargado]);
+
+  function marcarLeido(conversacionId: string) {
+    const ahora = new Date().toISOString();
+    setConversaciones((prev) => prev.map((c) => c.id !== conversacionId ? c : {
+      ...c,
+      chat_miembros: c.chat_miembros.map((m) => m.profile_id === me.id ? { ...m, last_read_at: ahora } : m),
+    }));
+    supabase.from("chat_miembros").update({ last_read_at: ahora })
+      .eq("conversacion_id", conversacionId).eq("profile_id", me.id).then();
+  }
 
   useEffect(() => {
     if (!seleccionada) { setMensajes([]); return; }
@@ -98,6 +108,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
         setMensajes((data ?? []) as Mensaje[]);
         setCargandoMensajes(false);
       });
+    marcarLeido(seleccionada);
 
     const canal = supabase
       .channel(`chat-widget-${seleccionada}`)
@@ -107,11 +118,13 @@ export function ChatWidget({ me }: { me: Perfil }) {
         (payload) => {
           const nuevo = payload.new as Mensaje;
           setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
+          marcarLeido(seleccionada);
         }
       )
       .subscribe();
 
     return () => { activo = false; supabase.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seleccionada, supabase]);
 
   useEffect(() => {
@@ -134,6 +147,11 @@ export function ChatWidget({ me }: { me: Perfil }) {
       return tb.localeCompare(ta);
     });
   }, [conversaciones, previewPorConversacion]);
+
+  const noLeidosCount = useMemo(
+    () => conversaciones.filter((c) => tieneNoLeidos(c, me.id, previewPorConversacion.get(c.id))).length,
+    [conversaciones, previewPorConversacion, me.id]
+  );
 
   const conversacionActual = conversaciones.find((c) => c.id === seleccionada) ?? null;
   const puedeEscribir =
@@ -222,7 +240,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? "Cerrar chat" : "Abrir chat interno"}
         title="Chat interno de Diagnotest"
-        className="fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full bg-g700 text-white shadow-lg flex items-center justify-center hover:bg-g800 transition-colors"
+        className="fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full bg-g700 text-white shadow-lg flex items-center justify-center hover:bg-g800 transition-colors relative"
       >
         {open ? (
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -230,6 +248,11 @@ export function ChatWidget({ me }: { me: Perfil }) {
           </svg>
         ) : (
           <i className="ti ti-message-circle text-[26px]" />
+        )}
+        {!open && noLeidosCount > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[19px] h-[19px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
+            {noLeidosCount > 9 ? "9+" : noLeidosCount}
+          </span>
         )}
       </button>
 
@@ -267,6 +290,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
                 {listaOrdenada.map((c) => {
                   const preview = previewPorConversacion.get(c.id);
                   const nombre = nombreConversacion(c, me.id);
+                  const noLeida = tieneNoLeidos(c, me.id, preview);
                   return (
                     <button
                       key={c.id}
@@ -280,8 +304,8 @@ export function ChatWidget({ me }: { me: Perfil }) {
                         {c.tipo === "dm" ? initials(nombre) : <i className={cn("ti", iconoConversacion(c), "text-[13px]")} />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-semibold text-gy900 truncate">{nombre}</div>
-                        <div className="text-[10.5px] text-gy400 truncate">
+                        <div className={cn("text-[12px] truncate", noLeida ? "font-bold text-gy900" : "font-semibold text-gy900")}>{nombre}</div>
+                        <div className={cn("text-[10.5px] truncate", noLeida ? "text-gy700 font-medium" : "text-gy400")}>
                           {preview
                             ? preview.adjunto_tipo
                               ? (preview.remitente_id === me.id ? "Vos: " : "") + (preview.adjunto_tipo === "imagen" ? "📷 Foto" : "📎 Archivo")
@@ -289,6 +313,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
                             : "Sin mensajes todavía"}
                         </div>
                       </div>
+                      {noLeida && <span className="w-2 h-2 rounded-full bg-g600 shrink-0" />}
                     </button>
                   );
                 })}

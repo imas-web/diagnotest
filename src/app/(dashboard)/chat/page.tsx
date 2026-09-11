@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Topbar } from "@/components/layout/Topbar";
 import { ChatApp } from "@/components/chat/ChatApp";
 import { landingPathForRole } from "@/lib/utils/roles";
+import { SELECT_CONVERSACIONES } from "@/components/chat/chatShared";
 
 // Los cadetes de logística tienen su propia UI mobile y no forman parte de
 // esta primera etapa del chat interno (DiagnoLis).
@@ -17,7 +18,7 @@ export default async function ChatPage() {
   const [{ data: conversaciones }, { data: contactos }] = await Promise.all([
     supabase
       .from("chat_conversaciones")
-      .select("id, tipo, nombre, dm_clave, created_at, chat_miembros(profile_id, profiles(id, nombre, email))")
+      .select(SELECT_CONVERSACIONES)
       .order("created_at", { ascending: true }),
     supabase
       .from("profiles")
