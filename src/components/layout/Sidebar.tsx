@@ -50,13 +50,11 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/cobranzas", label: "Pendientes", icon: "ti-inbox", badgeClass: "amber" },
         { href: "/cobranzas/validados", label: "Validados", icon: "ti-circle-check" },
         { href: "/cobranzas/diferencias", label: "Diferencias", icon: "ti-alert-triangle", badgeClass: "amber" },
-        { href: "/cancelados", label: "Cancelados / Anulados", icon: "ti-ban", badgeClass: "default" },
         { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "carga":
       return [
         { href: "/carga", label: "Controlados", icon: "ti-clipboard-check" },
-        { href: "/cancelados", label: "Cancelados / Anulados", icon: "ti-ban", badgeClass: "default" },
         { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "dueno":
@@ -79,6 +77,7 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/admin/veterinarias", label: "Veterinarias", icon: "ti-building-hospital" },
         { href: "/admin/zonas", label: "Zonas", icon: "ti-map" },
         { href: "/gastos/autorizar", label: "Gastos", icon: "ti-cash", badgeClass: "purple" },
+        { href: "/cancelados", label: "Cancelados / Anulados", icon: "ti-ban", badgeClass: "default" },
         { href: "/admin/auditoria", label: "Auditoría", icon: "ti-history" },
         { href: "/chat", label: "Chat", icon: "ti-message-circle" },
         { href: "/admin/config", label: "Configuración", icon: "ti-settings" },
@@ -151,8 +150,8 @@ export function Sidebar({ profile, onNavigate }: Props) {
         .then(({ count }) => setGastosCount(count ?? 0));
     }
 
-    // Cancelados / anulados por preanalítica (aviso para cobranzas y carga).
-    if (["cobranzas", "carga", "preanalitica", "super_admin", "dueno"].includes(rol)) {
+    // Cancelados / anulados por preanalítica (solo super_admin lo ve en el menú).
+    if (rol === "super_admin") {
       supabase
         .from("control_preanalitica")
         .select("id", { count: "exact", head: true })
