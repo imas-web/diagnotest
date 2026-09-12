@@ -18,16 +18,26 @@ export default async function ChatPage() {
 
   const admin = createAdminClient();
 
+  // Con el cliente admin a propósito en las dos: la política de SELECT de
+  // profiles no deja leer perfiles ajenos a cualquier rol (solo a algunos,
+  // ej. super_admin) — con el cliente de sesión, alguien sin ese permiso
+  // veía sus conversaciones pero sin el nombre de la otra persona
+  // (chat_miembros→profiles quedaba en null) y "Nuevo mensaje" solo
+  // mostraba Grupos, nunca Personas. El service role no pasa por RLS, así
+  // que acá se arma a mano el mismo filtro "mías + General" que antes
+  // resolvía la política de SELECT de chat_conversaciones.
+  const { data: misMiembros } = await admin.from("chat_miembros").select("conversacion_id").eq("profile_id", user.id);
+  const idsPropios = (misMiembros ?? []).map((m) => m.conversacion_id);
+  const orConversaciones = idsPropios.length
+    ? `tipo.eq.general,id.in.(${idsPropios.join(",")})`
+    : "tipo.eq.general";
+
   const [{ data: conversaciones }, { data: contactos, error: errorContactos }] = await Promise.all([
-    supabase
+    admin
       .from("chat_conversaciones")
       .select(SELECT_CONVERSACIONES)
+      .or(orConversaciones)
       .order("created_at", { ascending: true }),
-    // Con el cliente admin a propósito: la política de SELECT de profiles
-    // no deja leer perfiles ajenos a cualquier rol (solo a algunos, ej.
-    // super_admin), así que con el cliente de sesión esto se quedaba sin
-    // resultados para el resto — el síntoma era "Nuevo mensaje" mostrando
-    // solo Grupos (que ya se resolvía con admin) y nunca Personas.
     admin
       .from("profiles")
       .select("id, nombre, email, rol")

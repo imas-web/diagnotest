@@ -9,7 +9,7 @@ import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
-  nombreConversacion, iconoConversacion, tieneNoLeidos, remitenteDe, SELECT_CONVERSACIONES, SELECT_MENSAJE,
+  nombreConversacion, iconoConversacion, tieneNoLeidos, remitenteDe,
 } from "@/components/chat/chatShared";
 
 // Acceso rápido al chat interno sin salir de la pantalla en la que se está
@@ -40,20 +40,22 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const mensajesEndRef = useRef<HTMLDivElement>(null);
 
   async function cargarTodo() {
-    // Los contactos se piden a /api/chat/contactos (service role) porque la
-    // política de SELECT de profiles no deja leer perfiles ajenos a
-    // cualquier rol — con el cliente de sesión, algunos roles se quedaban
-    // sin resultados (veían Grupos, que sí se resuelve así, pero nunca
-    // Personas).
-    const [{ data: convs, error: errConvs }, contactosRes] = await Promise.all([
-      supabase.from("chat_conversaciones").select(SELECT_CONVERSACIONES).order("created_at", { ascending: true }),
+    // Conversaciones y contactos se piden a rutas con service role: los dos
+    // selects hacen un join a profiles (chat_miembros→profiles, o profiles
+    // directo), y la política de SELECT de profiles no deja leer perfiles
+    // ajenos a cualquier rol — con el cliente de sesión, algunos roles
+    // veían sus conversaciones pero sin el nombre de la otra persona
+    // ("Conversación" genérico), y "Nuevo mensaje" nunca mostraba Personas.
+    const [convsRes, contactosRes] = await Promise.all([
+      fetch("/api/chat/conversaciones").then((r) => r.json()).catch(() => ({ error: "No se pudo conectar" })),
       fetch("/api/chat/contactos").then((r) => r.json()).catch(() => ({ error: "No se pudo conectar" })),
     ]);
-    if (errConvs) toast("error", "No se pudieron cargar las conversaciones: " + errConvs.message);
+    if (convsRes.error) toast("error", "No se pudieron cargar las conversaciones: " + convsRes.error);
     if (contactosRes.error) toast("error", "No se pudieron cargar los contactos: " + contactosRes.error);
-    setConversaciones((convs ?? []) as unknown as Conversacion[]);
+    const convs = convsRes.conversaciones ?? [];
+    setConversaciones(convs as Conversacion[]);
     setContactos(contactosRes.contactos ?? []);
-    const ids = (convs ?? []).map((c) => c.id);
+    const ids = convs.map((c: Conversacion) => c.id);
     if (ids.length) {
       const { data: ult } = await supabase
         .from("chat_mensajes")
@@ -102,16 +104,12 @@ export function ChatWidget({ me }: { me: Perfil }) {
     if (!seleccionada) { setMensajes([]); return; }
     let activo = true;
     setCargandoMensajes(true);
-    supabase
-      .from("chat_mensajes")
-      .select(SELECT_MENSAJE)
-      .eq("conversacion_id", seleccionada)
-      .order("created_at", { ascending: true })
-      .limit(200)
-      .then(({ data, error }) => {
+    fetch(`/api/chat/mensajes?conversacion_id=${seleccionada}`)
+      .then((r) => r.json())
+      .then((json) => {
         if (!activo) return;
-        if (error) toast("error", "No se pudieron cargar los mensajes");
-        setMensajes((data ?? []) as Mensaje[]);
+        if (json.error) toast("error", "No se pudieron cargar los mensajes: " + json.error);
+        setMensajes((json.mensajes ?? []) as Mensaje[]);
         setCargandoMensajes(false);
       });
     marcarLeido(seleccionada);
@@ -297,8 +295,9 @@ export function ChatWidget({ me }: { me: Perfil }) {
         <div className="fixed bottom-24 right-5 z-50 w-[min(340px,calc(100vw-2.5rem))] h-[min(480px,calc(100vh-8rem))] bg-white rounded-xl shadow-2xl border border-gy200 flex flex-col overflow-hidden">
           <div className="bg-g700 text-white px-3 py-2.5 shrink-0 flex items-center gap-2">
             {seleccionada ? (
-              <button onClick={() => setSeleccionada(null)} className="text-white/90 hover:text-white shrink-0" aria-label="Volver">
-                <i className="ti ti-arrow-left text-[16px]" />
+              <button onClick={() => setSeleccionada(null)} className="flex items-center gap-1 text-white/90 hover:text-white shrink-0 -ml-1 px-1" aria-label="Volver a la lista de conversaciones">
+                <span aria-hidden className="text-[16px] leading-none">←</span>
+                <span className="text-[11px]">Atrás</span>
               </button>
             ) : (
               <span className="text-[15px] shrink-0" aria-hidden>👥</span>

@@ -8,7 +8,7 @@ import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
-  remitenteDe, nombreConversacion, iconoConversacion, tieneNoLeidos, SELECT_MENSAJE,
+  remitenteDe, nombreConversacion, iconoConversacion, tieneNoLeidos,
 } from "@/components/chat/chatShared";
 
 export function ChatApp({
@@ -94,20 +94,19 @@ export function ChatApp({
   }
 
   // Carga de mensajes + realtime al cambiar de conversación seleccionada.
+  // Se pide a /api/chat/mensajes (service role) porque el select trae
+  // remitente:remitente_id(...) embebido, y esa relación pasa por profiles
+  // — cuya política de SELECT no deja leer perfiles ajenos a cualquier rol.
   useEffect(() => {
     if (!seleccionada) { setMensajes([]); return; }
     let activo = true;
     setCargandoMensajes(true);
-    supabase
-      .from("chat_mensajes")
-      .select(SELECT_MENSAJE)
-      .eq("conversacion_id", seleccionada)
-      .order("created_at", { ascending: true })
-      .limit(500)
-      .then(({ data, error }) => {
+    fetch(`/api/chat/mensajes?conversacion_id=${seleccionada}`)
+      .then((r) => r.json())
+      .then((json) => {
         if (!activo) return;
-        if (error) toast("error", "No se pudieron cargar los mensajes");
-        setMensajes((data ?? []) as Mensaje[]);
+        if (json.error) toast("error", "No se pudieron cargar los mensajes: " + json.error);
+        setMensajes((json.mensajes ?? []) as Mensaje[]);
         setCargandoMensajes(false);
       });
     marcarLeido(seleccionada);
