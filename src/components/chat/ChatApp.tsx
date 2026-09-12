@@ -459,6 +459,12 @@ export function ChatApp({
             <div className="p-3 border-b border-gy100">
               <input
                 autoFocus
+                type="search"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                name="buscar-contacto-chat"
                 value={buscarContacto}
                 onChange={(e) => setBuscarContacto(e.target.value)}
                 placeholder="Buscar por nombre o mail…"
