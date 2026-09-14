@@ -34,8 +34,9 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [buscarContacto, setBuscarContacto] = useState("");
   const [grupos, setGrupos] = useState<Grupo[]>([]);
-  // Grupos abiertos para mandar un mensaje sin ser miembro todavía: al
-  // mandar el primer mensaje se suma como miembro real (ver sumarmeSiHaceFalta).
+  // Grupos abiertos para mandar un mensaje sin ser miembro: al mandar el
+  // primer mensaje se crea (o reutiliza) una conversación privada aparte
+  // con los miembros del grupo, ver resolverDestino.
   const [gruposAjenos, setGruposAjenos] = useState<Set<string>>(new Set());
 
   const mensajesEndRef = useRef<HTMLDivElement>(null);
@@ -230,34 +231,53 @@ export function ChatWidget({ me }: { me: Perfil }) {
     setBuscarContacto("");
   }
 
-  // Al mandarle un primer mensaje a un grupo ajeno, suma como miembro real
-  // (antes era un envío de una sola vía sin ver respuestas — a pedido,
-  // ahora participa del grupo de ahí en más) y recarga el historial
-  // completo, que hasta ese momento no podía leer.
-  async function sumarmeSiHaceFalta(conversacionId: string) {
-    if (!gruposAjenos.has(conversacionId)) return;
-    const { error } = await supabase
-      .from("chat_miembros")
-      .upsert({ conversacion_id: conversacionId, profile_id: me.id }, { onConflict: "conversacion_id,profile_id", ignoreDuplicates: true });
-    if (error) { toast("error", "No se pudo sumar al grupo: " + error.message); return; }
-    setGruposAjenos((prev) => { const s = new Set(prev); s.delete(conversacionId); return s; });
-    const json = await fetch(`/api/chat/mensajes?conversacion_id=${conversacionId}`).then((r) => r.json());
-    if (json.mensajes) setMensajes(json.mensajes as Mensaje[]);
+  // Al mandarle un primer mensaje a un grupo ajeno no se suma al grupo
+  // compartido — se le crea una conversación aparte, privada, solo entre
+  // esta persona y los miembros actuales del grupo (o reutiliza la que ya
+  // exista de un envío anterior). Devuelve el id real al que hay que
+  // mandar el mensaje (null si falló).
+  async function resolverDestino(): Promise<string | null> {
+    if (!seleccionada) return null;
+    if (!gruposAjenos.has(seleccionada)) return seleccionada;
+
+    const res = await fetch("/api/chat/grupos/privado", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ grupoId: seleccionada }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.conversacionId) { toast("error", json.error ?? "No se pudo enviar el mensaje"); return null; }
+
+    const nuevaId = json.conversacionId as string;
+    const anteriorId = seleccionada;
+    setConversaciones((prev) => {
+      const sinPlaceholder = prev.filter((c) => c.id !== anteriorId);
+      if (sinPlaceholder.some((c) => c.id === nuevaId)) return sinPlaceholder;
+      const conv = json.conversacion;
+      const nuevaConv: Conversacion = conv
+        ? { ...conv, chat_miembros: [] }
+        : { id: nuevaId, tipo: "grupo", nombre: null, dm_clave: null, created_at: new Date().toISOString(), chat_miembros: [] };
+      return [...sinPlaceholder, nuevaConv];
+    });
+    setGruposAjenos((prev) => { const s = new Set(prev); s.delete(anteriorId); return s; });
+    setSeleccionada(nuevaId);
+    return nuevaId;
   }
 
   async function enviarMensaje() {
     const contenido = texto.trim();
     if (!contenido || !seleccionada || enviando) return;
     setEnviando(true);
-    await sumarmeSiHaceFalta(seleccionada);
+    const destino = await resolverDestino();
+    if (!destino) { setEnviando(false); return; }
     const id = crypto.randomUUID();
     const nuevo: Mensaje = {
-      id, conversacion_id: seleccionada, remitente_id: me.id, contenido,
+      id, conversacion_id: destino, remitente_id: me.id, contenido,
       adjunto_url: null, adjunto_tipo: null, adjunto_nombre: null, created_at: new Date().toISOString(), remitente: me,
     };
     const { error } = await supabase
       .from("chat_mensajes")
-      .insert({ id, conversacion_id: seleccionada, remitente_id: me.id, contenido });
+      .insert({ id, conversacion_id: destino, remitente_id: me.id, contenido });
     setEnviando(false);
     if (error) { toast("error", error.message || "No se pudo enviar el mensaje"); return; }
     setTexto("");
@@ -268,9 +288,10 @@ export function ChatWidget({ me }: { me: Perfil }) {
     if (!files?.length || !seleccionada) return;
     const file = files[0];
     setSubiendoArchivo(true);
-    await sumarmeSiHaceFalta(seleccionada);
+    const destino = await resolverDestino();
+    if (!destino) { setSubiendoArchivo(false); return; }
     const ext = (file.name.split(".").pop() || "bin").toLowerCase();
-    const path = `${seleccionada}/${crypto.randomUUID()}.${ext}`;
+    const path = `${destino}/${crypto.randomUUID()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("chat-adjuntos").upload(path, file, {
       cacheControl: "3600", upsert: false, contentType: file.type || "application/octet-stream",
     });
@@ -284,12 +305,12 @@ export function ChatWidget({ me }: { me: Perfil }) {
     const tipo = file.type.startsWith("image/") ? "imagen" : "archivo";
     const id = crypto.randomUUID();
     const nuevo: Mensaje = {
-      id, conversacion_id: seleccionada, remitente_id: me.id, contenido: null,
+      id, conversacion_id: destino, remitente_id: me.id, contenido: null,
       adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name, created_at: new Date().toISOString(), remitente: me,
     };
     const { error } = await supabase
       .from("chat_mensajes")
-      .insert({ id, conversacion_id: seleccionada, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name });
+      .insert({ id, conversacion_id: destino, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name });
     setSubiendoArchivo(false);
     if (fileInput.current) fileInput.current.value = "";
     if (error) { toast("error", error.message || "No se pudo enviar el adjunto"); return; }
@@ -428,7 +449,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
                 ) : !mensajes.length ? (
                   <div className="text-center text-[11px] text-gy400 py-4 px-3">
                     {seleccionada && gruposAjenos.has(seleccionada)
-                      ? "No sos miembro de este grupo todavía. Al mandar un mensaje te sumás y vas a poder ver el historial completo y las respuestas."
+                      ? "No sos miembro de este grupo. Al mandar un mensaje se crea una conversación aparte, privada, solo entre vos y los miembros actuales del grupo."
                       : "Ningún mensaje todavía"}
                   </div>
                 ) : (
@@ -524,7 +545,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
             <div className="flex-1 overflow-y-auto">
               {gruposFiltrados.length > 0 && (
                 <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-gy400 uppercase tracking-wide">
-                  Grupos — sumate mandando un mensaje
+                  Grupos — se abre una conversación privada aparte
                 </div>
               )}
               {gruposFiltrados.map((g) => (
