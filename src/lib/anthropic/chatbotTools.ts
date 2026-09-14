@@ -3,10 +3,12 @@ import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Herramientas de solo lectura para el chatbot de consultas. Cada una arma un
- * SELECT sobre el cliente Supabase autenticado del usuario (respeta RLS: cada
- * quien ve lo mismo que ya podría ver navegando la app). Ninguna hace insert,
- * update ni delete.
+ * Herramientas de solo lectura para el chatbot de consultas. Reciben el
+ * cliente Supabase que les pase el caller (en /api/chatbot es el cliente
+ * admin, a propósito: así cualquier rol con acceso al chat puede preguntar
+ * por retiros/veterinarias/cadetes/etc. aunque esas pantallas no estén en
+ * su menú — el control de acceso al asistente en sí es el gate de rol en
+ * la ruta, no RLS por tabla). Ninguna hace insert, update ni delete.
  */
 
 const term = (s: string) => `%${s.trim()}%`;

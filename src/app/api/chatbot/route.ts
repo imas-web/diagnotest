@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createAnthropicClient, CHATBOT_MODEL } from "@/lib/anthropic/client";
 import { buildChatbotTools } from "@/lib/anthropic/chatbotTools";
 import { dateISOInBA } from "@/lib/utils/dates";
@@ -54,7 +55,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const tools = buildChatbotTools(supabase);
+  // Con el cliente admin a propósito: antes armaba las consultas con el
+  // cliente de sesión (respetando RLS), así que un rol sin acceso
+  // operativo directo (ej. "chat", pensado solo para el chat interno)
+  // preguntándole a DiagnoLis por retiros/veterinarias/cadetes se quedaba
+  // sin resultados aunque la pregunta fuera válida. A pedido, el asistente
+  // queda igual para cualquier rol con acceso al chat (el gate de arriba
+  // ya lo controla), aunque esas pantallas les sigan bloqueadas en el menú.
+  const admin = createAdminClient();
+  const tools = buildChatbotTools(admin);
 
   try {
     const finalMessage = await anthropic.beta.messages.toolRunner({
