@@ -47,9 +47,9 @@ export function ChatApp({
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [buscarContacto, setBuscarContacto] = useState("");
   const [grupos, setGrupos] = useState<Grupo[]>([]);
-  // Grupos que se abrieron para mandar un mensaje sin ser miembro (lista de
-  // difusión): se guardan aparte para poder avisar que no se va a ver el
-  // historial ni las respuestas, a diferencia de un grupo propio.
+  // Grupos que se abrieron para mandar un mensaje sin ser miembro todavía:
+  // se guardan aparte para avisar que al mandar el primer mensaje se suma
+  // como miembro real (deja de estar acá, ver sumarmeSiHaceFalta).
   const [gruposAjenos, setGruposAjenos] = useState<Set<string>>(new Set());
 
   const fileInput = useRef<HTMLInputElement>(null);
@@ -224,10 +224,26 @@ export function ChatApp({
     setBuscarContacto("");
   }
 
+  // Al mandarle un primer mensaje a un grupo ajeno, suma como miembro real
+  // (antes era un envío de una sola vía sin ver respuestas — a pedido,
+  // ahora participa del grupo de ahí en más) y recarga el historial
+  // completo, que hasta ese momento no podía leer.
+  async function sumarmeSiHaceFalta(conversacionId: string) {
+    if (!gruposAjenos.has(conversacionId)) return;
+    const { error } = await supabase
+      .from("chat_miembros")
+      .upsert({ conversacion_id: conversacionId, profile_id: me.id }, { onConflict: "conversacion_id,profile_id", ignoreDuplicates: true });
+    if (error) { toast("error", "No se pudo sumar al grupo: " + error.message); return; }
+    setGruposAjenos((prev) => { const s = new Set(prev); s.delete(conversacionId); return s; });
+    const json = await fetch(`/api/chat/mensajes?conversacion_id=${conversacionId}`).then((r) => r.json());
+    if (json.mensajes) setMensajes(json.mensajes as Mensaje[]);
+  }
+
   async function enviarMensaje() {
     const contenido = texto.trim();
     if (!contenido || !seleccionada || enviando) return;
     setEnviando(true);
+    await sumarmeSiHaceFalta(seleccionada);
     // El id se genera acá y se manda explícito en el insert (sin encadenar
     // .select()): pedirle a Postgres que devuelva la fila recién insertada
     // (Prefer: return=representation) obliga a repasar la política de
@@ -254,6 +270,7 @@ export function ChatApp({
     if (!files?.length || !seleccionada) return;
     const file = files[0];
     setSubiendoArchivo(true);
+    await sumarmeSiHaceFalta(seleccionada);
     const ext = (file.name.split(".").pop() || "bin").toLowerCase();
     const path = `${seleccionada}/${crypto.randomUUID()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("chat-adjuntos").upload(path, file, {
@@ -377,7 +394,7 @@ export function ChatApp({
               ) : !mensajes.length ? (
                 <div className="text-center text-[12px] text-gy400 py-6 px-4">
                   {seleccionada && gruposAjenos.has(seleccionada)
-                    ? "No sos miembro de este grupo: le podés mandar un mensaje, pero no vas a ver el historial ni las respuestas."
+                    ? "No sos miembro de este grupo todavía. Al mandar un mensaje te sumás como miembro y vas a poder ver el historial completo y las respuestas."
                     : "Ningún mensaje todavía — escribí el primero"}
                 </div>
               ) : (
@@ -474,7 +491,7 @@ export function ChatApp({
             <div className="flex-1 overflow-y-auto">
               {gruposFiltrados.length > 0 && (
                 <div className="px-4 pt-2.5 pb-1 text-[10.5px] font-semibold text-gy400 uppercase tracking-wide">
-                  Grupos — mandar sin ser miembro
+                  Grupos — sumate mandando un mensaje
                 </div>
               )}
               {gruposFiltrados.map((g) => (

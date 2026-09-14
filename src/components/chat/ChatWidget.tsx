@@ -33,8 +33,8 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [buscarContacto, setBuscarContacto] = useState("");
   const [grupos, setGrupos] = useState<Grupo[]>([]);
-  // Grupos abiertos para mandar un mensaje sin ser miembro (lista de
-  // difusión): no se va a ver su historial ni las respuestas.
+  // Grupos abiertos para mandar un mensaje sin ser miembro todavía: al
+  // mandar el primer mensaje se suma como miembro real (ver sumarmeSiHaceFalta).
   const [gruposAjenos, setGruposAjenos] = useState<Set<string>>(new Set());
 
   const mensajesEndRef = useRef<HTMLDivElement>(null);
@@ -228,10 +228,26 @@ export function ChatWidget({ me }: { me: Perfil }) {
     setBuscarContacto("");
   }
 
+  // Al mandarle un primer mensaje a un grupo ajeno, suma como miembro real
+  // (antes era un envío de una sola vía sin ver respuestas — a pedido,
+  // ahora participa del grupo de ahí en más) y recarga el historial
+  // completo, que hasta ese momento no podía leer.
+  async function sumarmeSiHaceFalta(conversacionId: string) {
+    if (!gruposAjenos.has(conversacionId)) return;
+    const { error } = await supabase
+      .from("chat_miembros")
+      .upsert({ conversacion_id: conversacionId, profile_id: me.id }, { onConflict: "conversacion_id,profile_id", ignoreDuplicates: true });
+    if (error) { toast("error", "No se pudo sumar al grupo: " + error.message); return; }
+    setGruposAjenos((prev) => { const s = new Set(prev); s.delete(conversacionId); return s; });
+    const json = await fetch(`/api/chat/mensajes?conversacion_id=${conversacionId}`).then((r) => r.json());
+    if (json.mensajes) setMensajes(json.mensajes as Mensaje[]);
+  }
+
   async function enviarMensaje() {
     const contenido = texto.trim();
     if (!contenido || !seleccionada || enviando) return;
     setEnviando(true);
+    await sumarmeSiHaceFalta(seleccionada);
     const id = crypto.randomUUID();
     const nuevo: Mensaje = {
       id, conversacion_id: seleccionada, remitente_id: me.id, contenido,
@@ -378,7 +394,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
                 ) : !mensajes.length ? (
                   <div className="text-center text-[11px] text-gy400 py-4 px-3">
                     {seleccionada && gruposAjenos.has(seleccionada)
-                      ? "No sos miembro de este grupo: se lo puede mandar igual, pero no vas a ver el historial ni las respuestas."
+                      ? "No sos miembro de este grupo todavía. Al mandar un mensaje te sumás y vas a poder ver el historial completo y las respuestas."
                       : "Ningún mensaje todavía"}
                   </div>
                 ) : (
@@ -467,7 +483,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
             <div className="flex-1 overflow-y-auto">
               {gruposFiltrados.length > 0 && (
                 <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-gy400 uppercase tracking-wide">
-                  Grupos — mandar sin ser miembro
+                  Grupos — sumate mandando un mensaje
                 </div>
               )}
               {gruposFiltrados.map((g) => (
