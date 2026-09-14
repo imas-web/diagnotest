@@ -30,6 +30,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const [cargandoMensajes, setCargandoMensajes] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [subiendoArchivo, setSubiendoArchivo] = useState(false);
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [buscarContacto, setBuscarContacto] = useState("");
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -38,6 +39,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const [gruposAjenos, setGruposAjenos] = useState<Set<string>>(new Set());
 
   const mensajesEndRef = useRef<HTMLDivElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   async function cargarTodo() {
     // Conversaciones y contactos se piden a rutas con service role: los dos
@@ -262,6 +264,38 @@ export function ChatWidget({ me }: { me: Perfil }) {
     setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
   }
 
+  async function adjuntarArchivo(files: FileList | null) {
+    if (!files?.length || !seleccionada) return;
+    const file = files[0];
+    setSubiendoArchivo(true);
+    await sumarmeSiHaceFalta(seleccionada);
+    const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+    const path = `${seleccionada}/${crypto.randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("chat-adjuntos").upload(path, file, {
+      cacheControl: "3600", upsert: false, contentType: file.type || "application/octet-stream",
+    });
+    if (upErr) {
+      toast("error", "No se pudo subir el archivo");
+      setSubiendoArchivo(false);
+      if (fileInput.current) fileInput.current.value = "";
+      return;
+    }
+    const url = supabase.storage.from("chat-adjuntos").getPublicUrl(path).data.publicUrl;
+    const tipo = file.type.startsWith("image/") ? "imagen" : "archivo";
+    const id = crypto.randomUUID();
+    const nuevo: Mensaje = {
+      id, conversacion_id: seleccionada, remitente_id: me.id, contenido: null,
+      adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name, created_at: new Date().toISOString(), remitente: me,
+    };
+    const { error } = await supabase
+      .from("chat_mensajes")
+      .insert({ id, conversacion_id: seleccionada, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name });
+    setSubiendoArchivo(false);
+    if (fileInput.current) fileInput.current.value = "";
+    if (error) { toast("error", error.message || "No se pudo enviar el adjunto"); return; }
+    setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
+  }
+
   const contactosFiltrados = contactos.filter((c) => {
     const q = buscarContacto.trim().toLowerCase();
     if (!q) return true;
@@ -433,6 +467,13 @@ export function ChatWidget({ me }: { me: Perfil }) {
               </div>
               {puedeEscribir ? (
                 <div className="shrink-0 bg-white border-t border-gy200 p-2 flex items-end gap-1.5">
+                  <input ref={fileInput} type="file" className="hidden" onChange={(e) => adjuntarArchivo(e.target.files)} />
+                  <button type="button" onClick={() => fileInput.current?.click()} disabled={subiendoArchivo}
+                    className="shrink-0 w-8 h-8 flex items-center justify-center rounded-[8px] border-2 border-gy200 text-gy400 hover:text-g600 hover:border-g400 disabled:opacity-50">
+                    {subiendoArchivo
+                      ? <span className="w-3 h-3 border-2 border-gy300 border-t-g600 rounded-full animate-spin" />
+                      : <i className="ti ti-paperclip text-[14px]" />}
+                  </button>
                   <textarea
                     value={texto}
                     onChange={(e) => setTexto(e.target.value)}

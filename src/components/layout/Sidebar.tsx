@@ -84,6 +84,7 @@ function getNavItems(rol: string): NavItem[] {
       ];
     case "chat":
       return [
+        { href: "/muestras-dia", label: "Muestras por día", icon: "ti-microscope" },
         { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     default:
