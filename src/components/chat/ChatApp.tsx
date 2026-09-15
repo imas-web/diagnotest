@@ -53,8 +53,12 @@ export function ChatApp({
   // mandar el primer mensaje se crea (o reutiliza) una conversación
   // privada aparte con los miembros del grupo, ver resolverDestino.
   const [gruposAjenos, setGruposAjenos] = useState<Set<string>>(new Set());
+  // Menú "Foto / Documento" que se abre al tocar el clip, en vez de ir
+  // directo al selector de archivos.
+  const [mostrarAdjuntoMenu, setMostrarAdjuntoMenu] = useState(false);
 
-  const fileInput = useRef<HTMLInputElement>(null);
+  const fileInputFoto = useRef<HTMLInputElement>(null);
+  const fileInputDoc = useRef<HTMLInputElement>(null);
   const mensajesEndRef = useRef<HTMLDivElement>(null);
 
   // Refs para leer el estado más reciente desde el listener global de
@@ -347,7 +351,8 @@ export function ChatApp({
     if (upErr) {
       toast("error", "No se pudo subir el archivo");
       setSubiendoArchivo(false);
-      if (fileInput.current) fileInput.current.value = "";
+      if (fileInputFoto.current) fileInputFoto.current.value = "";
+      if (fileInputDoc.current) fileInputDoc.current.value = "";
       return;
     }
     const url = supabase.storage.from("chat-adjuntos").getPublicUrl(path).data.publicUrl;
@@ -361,7 +366,8 @@ export function ChatApp({
       .from("chat_mensajes")
       .insert({ id, conversacion_id: destino, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name });
     setSubiendoArchivo(false);
-    if (fileInput.current) fileInput.current.value = "";
+    if (fileInputFoto.current) fileInputFoto.current.value = "";
+    if (fileInputDoc.current) fileInputDoc.current.value = "";
     if (error) { toast("error", error.message || "No se pudo enviar el adjunto"); return; }
     setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
   }
@@ -502,13 +508,33 @@ export function ChatApp({
 
             {puedeEscribir ? (
               <div className="shrink-0 bg-white border-t border-gy200 p-3 flex items-end gap-2">
-                <input ref={fileInput} type="file" className="hidden" onChange={(e) => adjuntarArchivo(e.target.files)} />
-                <button type="button" onClick={() => fileInput.current?.click()} disabled={subiendoArchivo}
-                  className="shrink-0 w-9 h-9 flex items-center justify-center rounded-[8px] border-2 border-gy200 text-gy400 hover:text-g600 hover:border-g400 disabled:opacity-50">
-                  {subiendoArchivo
-                    ? <span className="w-3.5 h-3.5 border-2 border-gy300 border-t-g600 rounded-full animate-spin" />
-                    : <i className="ti ti-paperclip text-[16px]" />}
-                </button>
+                <input ref={fileInputFoto} type="file" accept="image/*" className="hidden"
+                  onChange={(e) => { adjuntarArchivo(e.target.files); setMostrarAdjuntoMenu(false); }} />
+                <input ref={fileInputDoc} type="file" className="hidden"
+                  onChange={(e) => { adjuntarArchivo(e.target.files); setMostrarAdjuntoMenu(false); }} />
+                <div className="relative shrink-0">
+                  {mostrarAdjuntoMenu && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setMostrarAdjuntoMenu(false)} />
+                      <div className="absolute bottom-full left-0 mb-2 z-20 bg-white border-2 border-gy200 rounded-[8px] shadow-lg overflow-hidden min-w-[150px]">
+                        <button type="button" onClick={() => fileInputFoto.current?.click()}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-gy700 hover:bg-gy50 text-left">
+                          <i className="ti ti-photo text-[15px] text-gy400" /> Foto
+                        </button>
+                        <button type="button" onClick={() => fileInputDoc.current?.click()}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-gy700 hover:bg-gy50 text-left border-t border-gy100">
+                          <i className="ti ti-file text-[15px] text-gy400" /> Documento
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  <button type="button" onClick={() => setMostrarAdjuntoMenu((v) => !v)} disabled={subiendoArchivo}
+                    className="shrink-0 w-9 h-9 flex items-center justify-center rounded-[8px] border-2 border-gy200 text-gy400 hover:text-g600 hover:border-g400 disabled:opacity-50">
+                    {subiendoArchivo
+                      ? <span className="w-3.5 h-3.5 border-2 border-gy300 border-t-g600 rounded-full animate-spin" />
+                      : <i className="ti ti-paperclip text-[16px]" />}
+                  </button>
+                </div>
                 <textarea
                   value={texto}
                   onChange={(e) => setTexto(e.target.value)}
