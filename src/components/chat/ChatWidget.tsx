@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
+import { notificarMensajeChat, pedirPermisoNotificaciones } from "@/lib/utils/notificaciones";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
   nombreConversacion, iconoConversacion, tieneNoLeidos, remitenteDe,
@@ -42,6 +43,17 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const mensajesEndRef = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // Refs para leer el estado más reciente desde el listener global de
+  // mensajes nuevos (abajo) sin tener que resuscribirlo en cada cambio.
+  const openRef = useRef(open);
+  useEffect(() => { openRef.current = open; }, [open]);
+  const seleccionadaRef = useRef(seleccionada);
+  useEffect(() => { seleccionadaRef.current = seleccionada; }, [seleccionada]);
+  const contactosRef = useRef(contactos);
+  useEffect(() => { contactosRef.current = contactos; }, [contactos]);
+  const conversacionesRef = useRef(conversaciones);
+  useEffect(() => { conversacionesRef.current = conversaciones; }, [conversaciones]);
+
   async function cargarTodo() {
     // Conversaciones y contactos se piden a rutas con service role: los dos
     // selects hacen un join a profiles (chat_miembros→profiles, o profiles
@@ -75,6 +87,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
   // de mensajes sin leer en el botón cerrado, sin tener que abrir el chat.
   useEffect(() => {
     cargarTodo();
+    pedirPermisoNotificaciones();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -92,6 +105,40 @@ export function ChatWidget({ me }: { me: Perfil }) {
     return () => { supabase.removeChannel(canal); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me.id, supabase, cargado]);
+
+  // Avisa (vibración + sonido + notificación del sistema) ante CUALQUIER
+  // mensaje nuevo de mis conversaciones, esté el widget abierto o no — a
+  // diferencia del canal de arriba (que solo escucha la conversación
+  // seleccionada), este no filtra por conversacion_id porque Realtime no
+  // soporta filtrar por "está en esta lista de ids"; se filtra a mano. Se
+  // omite el aviso si ya estoy mirando esa conversación con la pestaña activa.
+  useEffect(() => {
+    const canal = supabase
+      .channel(`chat-widget-mensajes-${me.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_mensajes" },
+        (payload) => {
+          const cruda = payload.new as Mensaje;
+          if (cruda.remitente_id === me.id) return;
+          if (!conversacionesRef.current.some((c) => c.id === cruda.conversacion_id)) return;
+
+          setUltimos((prev) => [
+            { conversacion_id: cruda.conversacion_id, contenido: cruda.contenido, adjunto_tipo: cruda.adjunto_tipo, remitente_id: cruda.remitente_id, created_at: cruda.created_at },
+            ...prev,
+          ]);
+
+          const yaViendola = openRef.current && seleccionadaRef.current === cruda.conversacion_id && document.visibilityState === "visible";
+          if (yaViendola) return;
+          const remitente = contactosRef.current.find((c) => c.id === cruda.remitente_id);
+          const preview = cruda.adjunto_tipo ? (cruda.adjunto_tipo === "imagen" ? "📷 Foto" : "📎 Archivo") : (cruda.contenido ?? "Nuevo mensaje");
+          notificarMensajeChat(remitente?.nombre ?? "Chat interno", preview);
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me.id, supabase]);
 
   function marcarLeido(conversacionId: string) {
     const ahora = new Date().toISOString();

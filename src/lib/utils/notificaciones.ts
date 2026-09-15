@@ -72,3 +72,22 @@ export function notificarNuevoPedido() {
   sonar();
   notificacionSistema();
 }
+
+// Aviso de mensaje nuevo en el chat interno — mismo mecanismo (vibrar +
+// sonido + notificación del sistema), pero solo funciona con la pestaña/app
+// abierta (ver aclaración arriba). "tag" fijo: un mensaje nuevo reemplaza al
+// aviso anterior en vez de apilarlos.
+export function notificarMensajeChat(remitente: string, preview: string) {
+  vibrar();
+  sonar();
+  try {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    new Notification(remitente, {
+      body: preview,
+      icon: "/icons/icon-192.png",
+      tag: "chat-mensaje",
+    });
+  } catch {
+    /* sin notificación */
+  }
+}

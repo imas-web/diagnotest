@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
+import { notificarMensajeChat, pedirPermisoNotificaciones } from "@/lib/utils/notificaciones";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
   remitenteDe, nombreConversacion, iconoConversacion, tieneNoLeidos,
@@ -29,6 +30,7 @@ export function ChatApp({
 
   useEffect(() => {
     if (errorContactos) toast("error", "No se pudieron cargar los contactos: " + errorContactos);
+    pedirPermisoNotificaciones();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -54,6 +56,15 @@ export function ChatApp({
 
   const fileInput = useRef<HTMLInputElement>(null);
   const mensajesEndRef = useRef<HTMLDivElement>(null);
+
+  // Refs para leer el estado más reciente desde el listener global de
+  // mensajes nuevos (abajo) sin tener que resuscribirlo en cada cambio.
+  const seleccionadaRef = useRef(seleccionada);
+  useEffect(() => { seleccionadaRef.current = seleccionada; }, [seleccionada]);
+  const contactosRef = useRef(contactos);
+  useEffect(() => { contactosRef.current = contactos; }, [contactos]);
+  const conversacionesRef = useRef(conversaciones);
+  useEffect(() => { conversacionesRef.current = conversaciones; }, [conversaciones]);
 
   // Última preview por conversación, a partir de los últimos 200 mensajes
   // (ya vienen ordenados desc desde el server).
@@ -147,6 +158,41 @@ export function ChatApp({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "chat_miembros", filter: `profile_id=eq.${me.id}` },
         () => router.refresh()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me.id, supabase]);
+
+  // Avisa (vibración + sonido + notificación del sistema) ante CUALQUIER
+  // mensaje nuevo de mis conversaciones, esté abierta esa conversación o no
+  // — a diferencia del canal de arriba (línea ~114, que solo escucha la
+  // conversación seleccionada), este no filtra por conversacion_id porque
+  // Realtime no soporta filtrar por "está en esta lista de ids"; se filtra
+  // a mano. Se omite el aviso si ya estoy mirando esa conversación con la
+  // pestaña activa.
+  useEffect(() => {
+    const canal = supabase
+      .channel(`chat-mensajes-todos-${me.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_mensajes" },
+        (payload) => {
+          const cruda = payload.new as Mensaje;
+          if (cruda.remitente_id === me.id) return;
+          if (!conversacionesRef.current.some((c) => c.id === cruda.conversacion_id)) return;
+
+          setUltimos((prev) => [
+            { conversacion_id: cruda.conversacion_id, contenido: cruda.contenido, adjunto_tipo: cruda.adjunto_tipo, remitente_id: cruda.remitente_id, created_at: cruda.created_at },
+            ...prev,
+          ]);
+
+          const yaViendola = seleccionadaRef.current === cruda.conversacion_id && document.visibilityState === "visible";
+          if (yaViendola) return;
+          const remitente = contactosRef.current.find((c) => c.id === cruda.remitente_id);
+          const preview = cruda.adjunto_tipo ? (cruda.adjunto_tipo === "imagen" ? "📷 Foto" : "📎 Archivo") : (cruda.contenido ?? "Nuevo mensaje");
+          notificarMensajeChat(remitente?.nombre ?? "Chat interno", preview);
+        }
       )
       .subscribe();
     return () => { supabase.removeChannel(canal); };
