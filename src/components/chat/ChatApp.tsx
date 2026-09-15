@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
-import { notificarMensajeChat, pedirPermisoNotificaciones } from "@/lib/utils/notificaciones";
+import { notificarMensajeChat, pedirPermisoNotificaciones, estadoNotificaciones } from "@/lib/utils/notificaciones";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
   remitenteDe, nombreConversacion, iconoConversacion, tieneNoLeidos,
@@ -30,6 +30,13 @@ export function ChatApp({
 
   useEffect(() => {
     if (errorContactos) toast("error", "No se pudieron cargar los contactos: " + errorContactos);
+    // Solo lee el estado (no pide permiso: eso necesita un click) — para
+    // avisar de entrada si ya estaba bloqueado de antes, sin esperar a que
+    // alguien abra una conversación para enterarse.
+    if (estadoNotificaciones() === "denied") {
+      avisoNotifBloqueadas.current = true;
+      toast("error", "Las notificaciones están bloqueadas para este sitio. Tocá el candado/ícono junto a la URL → Notificaciones → Permitir, y recargá la página.");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -59,6 +66,15 @@ export function ChatApp({
   const fileInputFoto = useRef<HTMLInputElement>(null);
   const fileInputDoc = useRef<HTMLInputElement>(null);
   const mensajesEndRef = useRef<HTMLDivElement>(null);
+  const avisoNotifBloqueadas = useRef(false);
+
+  async function pedirNotificacionesConAviso() {
+    const estado = await pedirPermisoNotificaciones();
+    if (estado === "denied" && !avisoNotifBloqueadas.current) {
+      avisoNotifBloqueadas.current = true;
+      toast("error", "Las notificaciones están bloqueadas para este sitio. Tocá el candado/ícono junto a la URL → Notificaciones → Permitir, y recargá la página.");
+    }
+  }
 
   // Refs para leer el estado más reciente desde el listener global de
   // mensajes nuevos (abajo) sin tener que resuscribirlo en cada cambio.
@@ -417,8 +433,8 @@ export function ChatApp({
                 key={c.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => { setSeleccionada(c.id); pedirPermisoNotificaciones(); }}
-                onKeyDown={(e) => { if (e.key === "Enter") { setSeleccionada(c.id); pedirPermisoNotificaciones(); } }}
+                onClick={() => { setSeleccionada(c.id); pedirNotificacionesConAviso(); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { setSeleccionada(c.id); pedirNotificacionesConAviso(); } }}
                 className={cn(
                   "w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-gy50 hover:bg-gy50 cursor-pointer",
                   activa && "bg-g50"

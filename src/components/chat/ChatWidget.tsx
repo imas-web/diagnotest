@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
-import { notificarMensajeChat, pedirPermisoNotificaciones } from "@/lib/utils/notificaciones";
+import { notificarMensajeChat, pedirPermisoNotificaciones, estadoNotificaciones } from "@/lib/utils/notificaciones";
 import { actualizarBadgeFavicon } from "@/lib/utils/faviconBadge";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
@@ -47,6 +47,15 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const mensajesEndRef = useRef<HTMLDivElement>(null);
   const fileInputFoto = useRef<HTMLInputElement>(null);
   const fileInputDoc = useRef<HTMLInputElement>(null);
+  const avisoNotifBloqueadas = useRef(false);
+
+  async function pedirNotificacionesConAviso() {
+    const estado = await pedirPermisoNotificaciones();
+    if (estado === "denied" && !avisoNotifBloqueadas.current) {
+      avisoNotifBloqueadas.current = true;
+      toast("error", "Las notificaciones están bloqueadas para este sitio. Tocá el candado/ícono junto a la URL → Notificaciones → Permitir, y recargá la página.");
+    }
+  }
 
   // Refs para leer el estado más reciente desde el listener global de
   // mensajes nuevos (abajo) sin tener que resuscribirlo en cada cambio.
@@ -92,6 +101,13 @@ export function ChatWidget({ me }: { me: Perfil }) {
   // de mensajes sin leer en el botón cerrado, sin tener que abrir el chat.
   useEffect(() => {
     cargarTodo();
+    // Solo lee el estado (no pide permiso: eso necesita un click) — para
+    // avisar de entrada si ya estaba bloqueado de antes, sin esperar a que
+    // alguien abra el chat para enterarse.
+    if (estadoNotificaciones() === "denied") {
+      avisoNotifBloqueadas.current = true;
+      toast("error", "Las notificaciones están bloqueadas para este sitio. Tocá el candado/ícono junto a la URL → Notificaciones → Permitir, y recargá la página.");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -413,7 +429,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
           </span>
         )}
         <button
-          onClick={() => { setOpen((v) => !v); pedirPermisoNotificaciones(); }}
+          onClick={() => { setOpen((v) => !v); pedirNotificacionesConAviso(); }}
           aria-label={open ? "Cerrar chat" : "Abrir chat interno"}
           title="Chat interno de Diagnotest (no es DiagnoLis)"
           className="relative w-14 h-14 rounded-full bg-g700 text-white shadow-lg flex items-center justify-center hover:bg-g800 transition-colors text-[24px] leading-none"

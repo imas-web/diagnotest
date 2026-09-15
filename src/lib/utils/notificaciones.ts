@@ -2,15 +2,31 @@
 // Funciona mientras la app esté abierta (PWA/navegador). El push en segundo
 // plano real requiere VAPID + service worker push, que no está configurado.
 
-// Pide permiso de notificaciones una sola vez (best-effort, sin romper si no existe).
-export function pedirPermisoNotificaciones() {
+export type EstadoNotificaciones = "granted" | "denied" | "default" | "unsupported";
+
+// Solo lee el estado actual, sin pedir permiso (no dispara nada, se puede
+// llamar sin gesto del usuario) — para avisar de entrada si ya está
+// bloqueado, sin esperar a que alguien haga click en algo.
+export function estadoNotificaciones(): EstadoNotificaciones {
+  if (typeof Notification === "undefined") return "unsupported";
+  return Notification.permission;
+}
+
+// Pide permiso de notificaciones si todavía no se preguntó, y devuelve el
+// estado resultante — "denied" puede significar que el usuario lo rechazó
+// hace rato (de antes de pedirlo con un click) y el navegador no vuelve a
+// preguntar solo: hay que avisarle que lo habilite a mano desde la config
+// del sitio.
+export async function pedirPermisoNotificaciones(): Promise<EstadoNotificaciones> {
   try {
-    if (typeof Notification === "undefined") return;
+    if (typeof Notification === "undefined") return "unsupported";
     if (Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
+      const res = await Notification.requestPermission();
+      return res;
     }
+    return Notification.permission;
   } catch {
-    /* navegador sin soporte */
+    return "unsupported";
   }
 }
 
