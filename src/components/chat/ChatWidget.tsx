@@ -92,7 +92,6 @@ export function ChatWidget({ me }: { me: Perfil }) {
   // de mensajes sin leer en el botón cerrado, sin tener que abrir el chat.
   useEffect(() => {
     cargarTodo();
-    pedirPermisoNotificaciones();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -132,6 +131,17 @@ export function ChatWidget({ me }: { me: Perfil }) {
             { conversacion_id: cruda.conversacion_id, contenido: cruda.contenido, adjunto_tipo: cruda.adjunto_tipo, remitente_id: cruda.remitente_id, created_at: cruda.created_at },
             ...prev,
           ]);
+
+          // Si es la conversación que tengo abierta, la sumo también acá —
+          // no depender solo del canal filtrado por conversación (más abajo)
+          // evita que el mensaje quede sin aparecer hasta refrescar si por lo
+          // que sea ese otro canal no llega a tiempo.
+          if (cruda.conversacion_id === seleccionadaRef.current) {
+            const remitenteMsg = contactosRef.current.find((c) => c.id === cruda.remitente_id) ?? null;
+            const nuevo: Mensaje = { ...cruda, remitente: remitenteMsg };
+            setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
+            marcarLeido(cruda.conversacion_id);
+          }
 
           const yaViendola = openRef.current && seleccionadaRef.current === cruda.conversacion_id && document.visibilityState === "visible";
           if (yaViendola) return;
@@ -403,7 +413,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
           </span>
         )}
         <button
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => { setOpen((v) => !v); pedirPermisoNotificaciones(); }}
           aria-label={open ? "Cerrar chat" : "Abrir chat interno"}
           title="Chat interno de Diagnotest (no es DiagnoLis)"
           className="relative w-14 h-14 rounded-full bg-g700 text-white shadow-lg flex items-center justify-center hover:bg-g800 transition-colors text-[24px] leading-none"

@@ -30,7 +30,6 @@ export function ChatApp({
 
   useEffect(() => {
     if (errorContactos) toast("error", "No se pudieron cargar los contactos: " + errorContactos);
-    pedirPermisoNotificaciones();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -190,6 +189,17 @@ export function ChatApp({
             { conversacion_id: cruda.conversacion_id, contenido: cruda.contenido, adjunto_tipo: cruda.adjunto_tipo, remitente_id: cruda.remitente_id, created_at: cruda.created_at },
             ...prev,
           ]);
+
+          // Si es la conversación que tengo abierta, la sumo también acá —
+          // no depender solo del canal filtrado por conversación (más abajo)
+          // evita que el mensaje quede sin aparecer hasta refrescar si por lo
+          // que sea ese otro canal no llega a tiempo.
+          if (cruda.conversacion_id === seleccionadaRef.current) {
+            const remitenteMsg = contactosRef.current.find((c) => c.id === cruda.remitente_id) ?? null;
+            const nuevo: Mensaje = { ...cruda, remitente: remitenteMsg };
+            setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
+            marcarLeido(cruda.conversacion_id);
+          }
 
           const yaViendola = seleccionadaRef.current === cruda.conversacion_id && document.visibilityState === "visible";
           if (yaViendola) return;
@@ -407,8 +417,8 @@ export function ChatApp({
                 key={c.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => setSeleccionada(c.id)}
-                onKeyDown={(e) => { if (e.key === "Enter") setSeleccionada(c.id); }}
+                onClick={() => { setSeleccionada(c.id); pedirPermisoNotificaciones(); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { setSeleccionada(c.id); pedirPermisoNotificaciones(); } }}
                 className={cn(
                   "w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-gy50 hover:bg-gy50 cursor-pointer",
                   activa && "bg-g50"
