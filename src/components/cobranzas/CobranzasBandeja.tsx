@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ControlCard } from "@/components/ui/ControlCard";
+import { exportToExcel } from "@/lib/utils/export";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>;
@@ -49,6 +50,20 @@ export function CobranzasBandeja({
   const hayMas = controles.length < total;
   const masHref = { pathname: "/cobranzas", query: { ...(q ? { q } : {}), ...(fecha ? { fecha } : {}), ...(cadete ? { cadete } : {}), ver: ver + 50 } };
 
+  function exportar() {
+    const filas = ordenados.map((c: AnyRecord) => ({
+      Fecha: c.retiro?.fecha_operativa ?? "",
+      Veterinaria: c.retiro?.veterinaria_texto_original ?? "",
+      "Código": c.retiro?.codigo_original ?? "",
+      Cadete: c.retiro?.personal?.nombre ?? "",
+      "Importe declarado": c.importe_declarado ?? 0,
+      "Medio de pago": c.retiro?.metodo_pago ?? "",
+      Urgente: esUrgente(c) ? "Sí" : "No",
+    }));
+    const sufijo = [fecha, cadete && cadetes.find((c) => c.id === cadete)?.nombre].filter(Boolean).join("_") || "pendientes";
+    exportToExcel(filas, `cobranzas_${sufijo}`, "Pendientes");
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
@@ -76,8 +91,19 @@ export function CobranzasBandeja({
               {f.label}
             </button>
           ))}
+          {controles.length > 0 && (
+            <button onClick={exportar} title={hayMas ? `Solo exporta las ${controles.length} cargadas — usá "Mostrar más" para traer el resto antes de exportar` : undefined}
+              className="px-3 py-1.5 rounded-full border text-[11px] transition-all bg-white text-gy600 border-gy200 hover:border-g400 hover:text-g700 flex items-center gap-1">
+              <i className="ti ti-file-spreadsheet text-[13px]" /> Exportar Excel
+            </button>
+          )}
         </div>
       </div>
+      {hayMas && (
+        <div className="text-[11px] text-warn600 -mt-2">
+          Hay {total - controles.length} pendientes más sin cargar — tocá &quot;Mostrar más&quot; antes de exportar si los querés incluir.
+        </div>
+      )}
 
       {!controles.length && (
         <div className="py-12 text-center text-gy400">
