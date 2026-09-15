@@ -7,6 +7,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 // normal solo muestra las conversaciones propias (RLS), así que un grupo
 // ajeno no aparecería nunca en "Nuevo mensaje" sin esto. Se resuelve con
 // el cliente admin a propósito, sin exponer de más: solo id y nombre.
+//
+// Se excluyen las conversaciones "grupo" que en realidad son ramas privadas
+// creadas por /api/chat/grupos/privado (mismo tipo, para heredar el permiso
+// de insert sin ser miembro) — esas siempre tienen dm_clave seteado
+// ("grp:<grupoId>:<remitenteId>"), a diferencia de un grupo real, que nunca
+// lo tiene. Sin este filtro, la conversación privada de otra persona con un
+// grupo aparecía acá como si fuera un grupo más, ofreciendo sumarse a ella.
 export async function GET() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -22,6 +29,7 @@ export async function GET() {
     .from("chat_conversaciones")
     .select("id, nombre")
     .eq("tipo", "grupo")
+    .is("dm_clave", null)
     .order("nombre");
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 

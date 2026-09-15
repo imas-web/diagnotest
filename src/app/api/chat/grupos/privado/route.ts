@@ -29,8 +29,11 @@ export async function POST(req: Request) {
   if (!grupoId) return NextResponse.json({ error: "Falta el grupo" }, { status: 400 });
 
   const admin = createAdminClient();
-  const { data: grupo } = await admin.from("chat_conversaciones").select("id, tipo, nombre").eq("id", grupoId).maybeSingle();
-  if (!grupo || grupo.tipo !== "grupo") return NextResponse.json({ error: "Ese grupo no existe" }, { status: 404 });
+  const { data: grupo } = await admin.from("chat_conversaciones").select("id, tipo, nombre, dm_clave").eq("id", grupoId).maybeSingle();
+  // dm_clave seteado significa que "grupoId" ya es una rama privada de otra
+  // persona (creada acá mismo), no un grupo real — no se puede abrir una
+  // rama privada de una rama privada.
+  if (!grupo || grupo.tipo !== "grupo" || grupo.dm_clave) return NextResponse.json({ error: "Ese grupo no existe" }, { status: 404 });
 
   const clave = `grp:${grupoId}:${user.id}`;
 
