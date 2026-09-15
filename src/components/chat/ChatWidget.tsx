@@ -8,6 +8,7 @@ import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import { notificarMensajeChat, pedirPermisoNotificaciones } from "@/lib/utils/notificaciones";
+import { actualizarBadgeFavicon } from "@/lib/utils/faviconBadge";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
   nombreConversacion, iconoConversacion, tieneNoLeidos, remitenteDe,
@@ -216,6 +217,13 @@ export function ChatWidget({ me }: { me: Perfil }) {
     () => conversaciones.filter((c) => tieneNoLeidos(c, me.id, previewPorConversacion.get(c.id))).length,
     [conversaciones, previewPorConversacion, me.id]
   );
+
+  // Badge en el ícono de la pestaña (estilo WhatsApp Web) — se actualiza acá
+  // porque este widget vive en todas las páginas del dashboard salvo /chat,
+  // que trae el mismo mecanismo por su cuenta (ver ChatApp).
+  useEffect(() => {
+    actualizarBadgeFavicon(noLeidosCount);
+  }, [noLeidosCount]);
 
   const conversacionActual = conversaciones.find((c) => c.id === seleccionada) ?? null;
   const puedeEscribir =
