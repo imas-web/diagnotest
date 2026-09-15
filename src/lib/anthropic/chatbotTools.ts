@@ -179,11 +179,17 @@ export function buildChatbotTools(supabase: SupabaseClient) {
       const { ids, sinResultados } = await resolveRetiroIds(supabase, input);
       if (sinResultados) return "No se encontró personal o veterinaria que coincida con esa búsqueda.";
 
+      // Mismo criterio que la bandeja real de Preanalítica: un retiro anulado
+      // o marcado duplicado sospechoso sigue teniendo su control creado, pero
+      // no cuenta como pendiente real (por eso el join es !inner, para poder
+      // filtrar por columnas del retiro).
       let query = supabase
         .from("control_preanalitica")
         .select(
-          "id, estado, control_1, control_2, urgente, detalle, detalle_2, comentario, responsable_1, responsable_2, cancelado, cancelado_motivo, updated_at, retiro:retiro_id(fecha_operativa, personal:personal_id(nombre), veterinaria:veterinaria_id(nombre))"
+          "id, estado, control_1, control_2, urgente, detalle, detalle_2, comentario, responsable_1, responsable_2, cancelado, cancelado_motivo, updated_at, retiro:retiro_id!inner(fecha_operativa, anulado, estado, personal:personal_id(nombre), veterinaria:veterinaria_id(nombre))"
         )
+        .eq("retiro.anulado", false)
+        .neq("retiro.estado", "duplicado_sospechoso")
         .order("updated_at", { ascending: false })
         .limit(capLimite(input.limite));
 
@@ -225,11 +231,17 @@ export function buildChatbotTools(supabase: SupabaseClient) {
         if (responsableIds.length === 0) return "No se encontró ningún usuario con ese nombre.";
       }
 
+      // Mismo criterio que la bandeja real de Cobranzas: un retiro anulado o
+      // duplicado sospechoso sigue teniendo su control creado, pero no cuenta
+      // como pendiente real (por eso el join es !inner, para filtrar por
+      // columnas del retiro).
       let query = supabase
         .from("control_cobranzas")
         .select(
-          "id, estado, importe_declarado, importe_validado, diferencia, detalle, medio_pago, updated_at, responsable:responsable_id(nombre), retiro:retiro_id(fecha_operativa, personal:personal_id(nombre), veterinaria:veterinaria_id(nombre))"
+          "id, estado, importe_declarado, importe_validado, diferencia, detalle, medio_pago, updated_at, responsable:responsable_id(nombre), retiro:retiro_id!inner(fecha_operativa, anulado, estado, personal:personal_id(nombre), veterinaria:veterinaria_id(nombre))"
         )
+        .eq("retiro.anulado", false)
+        .neq("retiro.estado", "duplicado_sospechoso")
         .order("updated_at", { ascending: false })
         .limit(capLimite(input.limite));
 
