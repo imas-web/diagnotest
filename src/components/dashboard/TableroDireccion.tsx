@@ -13,6 +13,8 @@ export type DashData = {
   cobranzas: { efectivoDeclarado: number; efectivoValidado: number; pendientes: number };
   productividad: { persona: string; count: number }[];
   cargaPorHora: { hora: number; count: number }[];
+  calidadPrev: { okPct: number; tiempoControlHs: number };
+  cobranzasPrev: { efectivoDeclarado: number; efectivoValidado: number };
 };
 
 type Row = { day: number; cad: number; vet: number; ret: number; mue: number };

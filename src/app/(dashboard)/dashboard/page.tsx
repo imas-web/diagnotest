@@ -5,6 +5,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { ResumenPendientesEtapa } from "@/components/preanalitica/ResumenPendientesEtapa";
 import { TableroDireccion, type DashData } from "@/components/dashboard/TableroDireccion";
+import { Scorecard } from "@/components/dashboard/Scorecard";
 import { esDireccion, landingPathForRole } from "@/lib/utils/roles";
 import { todayISO } from "@/lib/utils/dates";
 
@@ -65,8 +66,14 @@ export default async function DashboardPage() {
   const admin = createAdminClient();
   const today = todayISO();
   const firstDayMonth = today.slice(0, 7) + "-01";
+  const [fy, fm] = firstDayMonth.split("-").map(Number);
+  const firstDayPrevMonth = new Date(Date.UTC(fy, fm - 2, 1)).toISOString().slice(0, 10);
 
-  const [retirosRows, vetsRows, personalRows, zonasRows, controlesMes, cobranzasMes, okCount, obsCount, rechCount, pendCount] = await Promise.all([
+  const [
+    retirosRows, vetsRows, personalRows, zonasRows, controlesMes, cobranzasMes,
+    okCount, obsCount, rechCount, pendCount,
+    okCountPrev, obsCountPrev, rechCountPrev, tiempoControlHsPrev, cobranzasPrevMes,
+  ] = await Promise.all([
     fetchAllSimple<RetiroRow>(admin, "retiros", "fecha_operativa,personal_id,veterinaria_id,veterinaria_texto_original,cantidad_muestras",
       (q) => q.eq("anulado", false).neq("estado", "duplicado_sospechoso")),
     fetchAllSimple<VetRow>(admin, "veterinarias", "id,nombre,zona_id", (q) => q),
@@ -114,6 +121,53 @@ export default async function DashboardPage() {
     admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "observado").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0),
     admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "rechazado").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0),
     admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "pendiente").eq("cancelado", false).then((r) => r.count ?? 0),
+    // ---- Mes anterior (para el Scorecard: compara mes en curso vs mes cerrado) ----
+    admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "ok").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0),
+    admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "observado").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0),
+    admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "rechazado").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0),
+    (async () => {
+      const countQ = admin.from("control_preanalitica")
+        .select("id, retiro:retiro_id!inner(fecha_operativa)", { count: "exact", head: true })
+        .neq("estado", "pendiente").gte("retiro.fecha_operativa", firstDayPrevMonth).lt("retiro.fecha_operativa", firstDayMonth);
+      const { count } = await countQ;
+      const total = count ?? 0;
+      if (!total) return 0;
+      const pages = Math.ceil(total / 1000);
+      const chunks = await Promise.all(
+        Array.from({ length: pages }, (_, i) =>
+          admin.from("control_preanalitica")
+            .select("updated_at,retiro:retiro_id!inner(timestamp_carga,fecha_operativa)")
+            .neq("estado", "pendiente").gte("retiro.fecha_operativa", firstDayPrevMonth).lt("retiro.fecha_operativa", firstDayMonth)
+            .range(i * 1000, i * 1000 + 999)
+        )
+      );
+      const filas = chunks.flatMap((c) => (c.data as unknown as ControlMesRow[]) ?? []);
+      const tiempos = filas.map((c) => {
+        const retiro = Array.isArray(c.retiro) ? c.retiro[0] : c.retiro;
+        if (!retiro) return null;
+        const ms = new Date(c.updated_at).getTime() - new Date(retiro.timestamp_carga).getTime();
+        return ms > 0 ? ms / 3600000 : null;
+      }).filter((v): v is number => v !== null);
+      return tiempos.length ? tiempos.reduce((s, v) => s + v, 0) / tiempos.length : 0;
+    })(),
+    (async () => {
+      const countQ = admin.from("control_cobranzas")
+        .select("id, retiro:retiro_id!inner(fecha_operativa)", { count: "exact", head: true })
+        .gte("retiro.fecha_operativa", firstDayPrevMonth).lt("retiro.fecha_operativa", firstDayMonth);
+      const { count } = await countQ;
+      const total = count ?? 0;
+      if (!total) return [] as CobranzaMesRow[];
+      const pages = Math.ceil(total / 1000);
+      const chunks = await Promise.all(
+        Array.from({ length: pages }, (_, i) =>
+          admin.from("control_cobranzas")
+            .select("estado,importe_declarado,importe_validado,retiro:retiro_id!inner(fecha_operativa)")
+            .gte("retiro.fecha_operativa", firstDayPrevMonth).lt("retiro.fecha_operativa", firstDayMonth)
+            .range(i * 1000, i * 1000 + 999)
+        )
+      );
+      return chunks.flatMap((c) => (c.data as unknown as CobranzaMesRow[]) ?? []);
+    })(),
   ]);
 
   // ---- Índices compactos (nombre → número) para mandar un payload chico al cliente ----
@@ -193,6 +247,11 @@ export default async function DashboardPage() {
   const efectivoValidado = cobranzasMes.filter((c) => c.estado !== "pendiente").reduce((s, c) => s + (c.importe_validado ?? c.importe_declarado ?? 0), 0);
   const cobranzasPendientes = cobranzasMes.filter((c) => c.estado === "pendiente").length;
 
+  // ---- Mes anterior (referencia del Scorecard) ----
+  const totalJuzgadoPrev = okCountPrev + obsCountPrev + rechCountPrev;
+  const efectivoDeclaradoPrev = cobranzasPrevMes.reduce((s, c) => s + (c.importe_declarado ?? 0), 0);
+  const efectivoValidadoPrev = cobranzasPrevMes.filter((c) => c.estado !== "pendiente").reduce((s, c) => s + (c.importe_validado ?? c.importe_declarado ?? 0), 0);
+
   const data: DashData = {
     baseISO: isoOfDayIndex(minDay),
     cadetes,
@@ -213,6 +272,14 @@ export default async function DashboardPage() {
     },
     productividad,
     cargaPorHora,
+    calidadPrev: {
+      okPct: totalJuzgadoPrev ? (okCountPrev / totalJuzgadoPrev) * 100 : 100,
+      tiempoControlHs: tiempoControlHsPrev,
+    },
+    cobranzasPrev: {
+      efectivoDeclarado: efectivoDeclaradoPrev,
+      efectivoValidado: efectivoValidadoPrev,
+    },
   };
 
   return (
@@ -222,6 +289,7 @@ export default async function DashboardPage() {
         <DashboardTabs
           operativo={<ResumenPendientesEtapa />}
           general={<TableroDireccion data={data} />}
+          scorecard={<Scorecard data={data} />}
         />
       </div>
     </div>
