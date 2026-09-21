@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PillStatus, RoleBadge } from "@/components/ui/PillStatus";
 import { toast } from "@/components/ui/ToastNotification";
+import { CargaLoteUsuarios } from "@/components/admin/CargaLoteUsuarios";
 
 export interface UsuarioRow {
   id: string;
@@ -28,6 +29,7 @@ const ROLES: { value: string; label: string }[] = [
   { value: "carga", label: "Carga" },
   { value: "dueno", label: "Dueño" },
   { value: "super_admin", label: "Super Admin" },
+  { value: "chat", label: "Solo chat" },
 ];
 
 type Editing =
@@ -39,6 +41,8 @@ export function UsuariosManager({ usuarios, zonas }: { usuarios: UsuarioRow[]; z
   const router = useRouter();
   const [editing, setEditing] = useState<Editing>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [mostrarLote, setMostrarLote] = useState(false);
+  const emailsExistentes = new Set(usuarios.map((u) => u.email.toLowerCase()));
 
   async function toggleActivo(u: UsuarioRow) {
     setBusyId(u.id);
@@ -74,6 +78,10 @@ export function UsuariosManager({ usuarios, zonas }: { usuarios: UsuarioRow[]; z
       <div className="px-4 py-3.5 border-b border-gy100 flex items-center gap-2">
         <i className="ti ti-users text-g600" />
         <span className="text-[14px] font-semibold flex-1">Usuarios y roles</span>
+        <button onClick={() => setMostrarLote(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-gy200 text-gy600 text-[12px] font-medium rounded-[6px] hover:border-g400 hover:text-g700">
+          <i className="ti ti-upload" /> Carga en lote
+        </button>
         <button onClick={() => setEditing({ mode: "nuevo" })}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-g800 text-white text-[12px] font-medium rounded-[6px] hover:bg-g700">
           <i className="ti ti-plus" /> Nuevo
@@ -130,6 +138,14 @@ export function UsuariosManager({ usuarios, zonas }: { usuarios: UsuarioRow[]; z
           zonas={zonas}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); router.refresh(); }}
+        />
+      )}
+
+      {mostrarLote && (
+        <CargaLoteUsuarios
+          emailsExistentes={emailsExistentes}
+          onClose={() => setMostrarLote(false)}
+          onDone={() => { setMostrarLote(false); router.refresh(); }}
         />
       )}
     </div>

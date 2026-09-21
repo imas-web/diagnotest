@@ -26,15 +26,40 @@ export default async function CajaPage({
   const fecha = fechaParam || todayISO();
 
   const admin = createAdminClient();
+
+  // El API de Supabase limita a 1000 filas por request (ver mismo patrón en
+  // inicio/page.tsx). La caja abierta de un cadete puede superar eso largo,
+  // así que paginamos hasta traer todo — si no, los totales y el "sellado"
+  // de retiros al validar quedan truncados silenciosamente.
+  async function fetchAllRows<T>(
+    build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+  ): Promise<T[]> {
+    const rows: T[] = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await build(from, from + PAGE - 1);
+      if (error || !data?.length) break;
+      rows.push(...data);
+      if (data.length < PAGE) break;
+    }
+    return rows;
+  }
+
   // Pendientes = caja abierta de cada cadete: retiros/gastos NO validados
   // (rendicion_id NULL), sin importar el día. El corte lo marca la validación.
-  const [{ data: retiros }, { data: gastos }, { data: revisadosRaw }] = await Promise.all([
-    admin.from("retiros")
-      .select("personal_id, importe_declarado, metodo_pago, fecha_operativa, personal:personal_id(nombre)")
-      .is("rendicion_id", null).eq("anulado", false).lte("fecha_operativa", fecha),
-    admin.from("gastos")
-      .select("personal_id, monto, descripcion, tipo, fecha_operativa, personal:personal_id(nombre)")
-      .is("rendicion_id", null).lte("fecha_operativa", fecha),
+  const [retiros, gastos, { data: revisadosRaw }] = await Promise.all([
+    fetchAllRows((from, to) =>
+      admin.from("retiros")
+        .select("personal_id, importe_declarado, metodo_pago, fecha_operativa, personal:personal_id(nombre)")
+        .is("rendicion_id", null).eq("anulado", false).lte("fecha_operativa", fecha)
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      admin.from("gastos")
+        .select("personal_id, monto, descripcion, tipo, fecha_operativa, personal:personal_id(nombre)")
+        .is("rendicion_id", null).lte("fecha_operativa", fecha)
+        .range(from, to)
+    ),
     admin.from("rendiciones_caja")
       .select("*, personal:personal_id(nombre)")
       .in("estado", ["validado", "diferencia"])

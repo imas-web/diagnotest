@@ -34,6 +34,7 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/admin/veterinarias", label: "Veterinarias", icon: "ti-building-hospital" },
         { href: "/retiros/duplicados", label: "Duplicados", icon: "ti-copy", badgeClass: "amber" },
         { href: "/gastos/autorizar", label: "Gastos a autorizar", icon: "ti-cash", badgeClass: "purple" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "preanalitica":
       return [
@@ -42,18 +43,19 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/preanalitica/observados", label: "Observados", icon: "ti-alert-circle" },
         { href: "/resumen", label: "Resumen", icon: "ti-report-analytics" },
         { href: "/retiros/duplicados", label: "Duplicados", icon: "ti-copy", badgeClass: "amber" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "cobranzas":
       return [
         { href: "/cobranzas", label: "Pendientes", icon: "ti-inbox", badgeClass: "amber" },
         { href: "/cobranzas/validados", label: "Validados", icon: "ti-circle-check" },
         { href: "/cobranzas/diferencias", label: "Diferencias", icon: "ti-alert-triangle", badgeClass: "amber" },
-        { href: "/cancelados", label: "Cancelados / Anulados", icon: "ti-ban", badgeClass: "default" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "carga":
       return [
         { href: "/carga", label: "Controlados", icon: "ti-clipboard-check" },
-        { href: "/cancelados", label: "Cancelados / Anulados", icon: "ti-ban", badgeClass: "default" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "dueno":
       return [
@@ -61,20 +63,29 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/caja", label: "Control de caja", icon: "ti-cash-register" },
         { href: "/retiros", label: "Todos los retiros", icon: "ti-table" },
         { href: "/gastos/autorizar", label: "Gastos", icon: "ti-cash" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "super_admin":
       return [
         { href: "/dashboard", label: "Dashboard", icon: "ti-chart-bar" },
         { href: "/caja", label: "Control de caja", icon: "ti-cash-register" },
         { href: "/resumen", label: "Resumen", icon: "ti-report-analytics" },
+        { href: "/preanalitica/observados", label: "Observados", icon: "ti-alert-circle" },
         { href: "/pedidos", label: "Pedidos de retiro", icon: "ti-map-pin", badgeClass: "blue" },
         { href: "/retiros", label: "Todos los retiros", icon: "ti-table" },
         { href: "/admin/personal", label: "Personal", icon: "ti-users" },
         { href: "/admin/veterinarias", label: "Veterinarias", icon: "ti-building-hospital" },
         { href: "/admin/zonas", label: "Zonas", icon: "ti-map" },
         { href: "/gastos/autorizar", label: "Gastos", icon: "ti-cash", badgeClass: "purple" },
+        { href: "/cancelados", label: "Cancelados / Anulados", icon: "ti-ban", badgeClass: "default" },
         { href: "/admin/auditoria", label: "Auditoría", icon: "ti-history" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
         { href: "/admin/config", label: "Configuración", icon: "ti-settings" },
+      ];
+    case "chat":
+      return [
+        { href: "/muestras-dia", label: "Muestras por día", icon: "ti-microscope" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     default:
       return [];
@@ -106,6 +117,7 @@ export function Sidebar({ profile, onNavigate }: Props) {
   const [cancelCount, setCancelCount] = useState(0);
   const [cobPendCount, setCobPendCount] = useState(0);
   const [cobDifCount, setCobDifCount] = useState(0);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
   const rol = profile.rol;
   const refreshBadges = useCallback(() => {
@@ -139,8 +151,8 @@ export function Sidebar({ profile, onNavigate }: Props) {
         .then(({ count }) => setGastosCount(count ?? 0));
     }
 
-    // Cancelados / anulados por preanalítica (aviso para cobranzas y carga).
-    if (["cobranzas", "carga", "preanalitica", "super_admin", "dueno"].includes(rol)) {
+    // Cancelados / anulados por preanalítica (solo super_admin lo ve en el menú).
+    if (rol === "super_admin") {
       supabase
         .from("control_preanalitica")
         .select("id", { count: "exact", head: true })
@@ -163,7 +175,35 @@ export function Sidebar({ profile, onNavigate }: Props) {
         .eq("estado", "diferencia")
         .then(({ count }) => setCobDifCount(count ?? 0));
     }
-  }, [rol]);
+
+    // Chat sin leer: conversaciones propias cuyo último mensaje es más
+    // nuevo que mi last_read_at y no lo mandé yo.
+    if (rol !== "personal_logistica") {
+      supabase
+        .from("chat_miembros")
+        .select("conversacion_id, last_read_at")
+        .eq("profile_id", profile.id)
+        .then(async ({ data: miembros }) => {
+          if (!miembros?.length) { setChatUnreadCount(0); return; }
+          const ids = miembros.map((m) => m.conversacion_id);
+          const { data: mensajes } = await supabase
+            .from("chat_mensajes")
+            .select("conversacion_id, created_at, remitente_id")
+            .in("conversacion_id", ids)
+            .order("created_at", { ascending: false })
+            .limit(500);
+          const ultimoPorConversacion = new Map<string, { created_at: string; remitente_id: string }>();
+          for (const m of mensajes ?? []) {
+            if (!ultimoPorConversacion.has(m.conversacion_id)) ultimoPorConversacion.set(m.conversacion_id, m);
+          }
+          const noLeidas = miembros.filter((m) => {
+            const ultimo = ultimoPorConversacion.get(m.conversacion_id);
+            return ultimo && ultimo.remitente_id !== profile.id && ultimo.created_at > m.last_read_at;
+          });
+          setChatUnreadCount(noLeidas.length);
+        });
+    }
+  }, [rol, profile.id]);
 
   useEffect(() => {
     refreshBadges();
@@ -207,6 +247,7 @@ export function Sidebar({ profile, onNavigate }: Props) {
             : item.href === "/cancelados" ? (cancelCount || undefined)
             : item.href === "/cobranzas" ? (cobPendCount || undefined)
             : item.href === "/cobranzas/diferencias" ? (cobDifCount || undefined)
+            : item.href === "/chat" ? (chatUnreadCount || undefined)
             : item.badge;
           return (
             <Link

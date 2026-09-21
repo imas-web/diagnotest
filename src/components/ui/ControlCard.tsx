@@ -71,10 +71,11 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
   const [responsable2, setResponsable2] = useState<string | null>(control.responsable_2 ?? null);
   const [saving, setSaving] = useState(false);
   const [savingEdicion, setSavingEdicion] = useState(false);
+  const [savingDuplicado, setSavingDuplicado] = useState(false);
 
-  // En Control 2 las etiquetas del Control 1 quedan bloqueadas (solo lectura);
-  // el operador del segundo control puede agregar otras, pero no quitarlas.
-  const etiquetasBase = etapa === "c2" ? (control.etiquetas ?? []) as string[] : [];
+  // Etiquetas tal como quedaron en el Control 1 — solo para el resumen de
+  // arriba en Control 2; ya no bloquean edición (se pueden modificar en el 2).
+  const etiquetasControl1 = etapa === "c2" ? (control.etiquetas ?? []) as string[] : [];
 
   // Muestras editables (solo preanalítica) con confirmación.
   const [muestras, setMuestras] = useState(String(retiro?.cantidad_muestras ?? ""));
@@ -123,7 +124,6 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
   const [savingCodigo, setSavingCodigo] = useState(false);
 
   const toggleEtiqueta = (e: string) => {
-    if (etiquetasBase.includes(e)) return; // bloqueada: viene del Control 1
     setEtiquetas((prev) => (prev.includes(e) ? prev.filter((x) => x !== e) : [...prev, e]));
   };
 
@@ -191,6 +191,24 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
     setSavingEdicion(false);
     if (!res.ok) { toast("error", json.error ?? "No se pudo guardar"); return; }
     toast("success", "Cambios guardados ✓");
+    router.refresh();
+  }
+
+  // Envía el retiro al flujo de Duplicados (Retiros → Duplicados), donde ya
+  // se puede Confirmar o Descartar. Saca el control de Observados: el caso se
+  // termina de resolver allá, no acá.
+  async function marcarDuplicado() {
+    if (!window.confirm("¿Marcar este retiro como duplicado?\n\nPasa a Retiros → Duplicados, donde se puede confirmar o descartar. Sale de Observados.")) return;
+    setSavingDuplicado(true);
+    const res = await fetch("/api/preanalitica/marcar-duplicado", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ controlId: control.id }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setSavingDuplicado(false);
+    if (!res.ok) { toast("error", json.error ?? "No se pudo marcar como duplicado"); return; }
+    toast("success", "Enviado a Retiros → Duplicados ✓");
     router.refresh();
   }
 
@@ -359,6 +377,16 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
             <i className="ti ti-repeat" /> 2ª visita
           </span>
         )}
+        {tipo === "pre" && (
+          <button type="button" onClick={marcarDuplicado} disabled={saving || savingDuplicado}
+            title="Manda el retiro a Retiros → Duplicados para confirmar o descartar"
+            className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-[6px] border border-red-200 text-red-700 bg-white hover:bg-red-50 disabled:opacity-50">
+            {savingDuplicado
+              ? <span className="w-3 h-3 border-2 border-red-300 border-t-red-700 rounded-full animate-spin" />
+              : <i className="ti ti-copy text-[12px]" />}
+            Es duplicado
+          </button>
+        )}
         <span className="flex-1" />
         {match === true && (
           <span className="inline-flex items-center gap-1 text-[10px] font-medium text-g700 bg-g50 border border-g200 rounded-full px-2 py-0.5">
@@ -428,16 +456,19 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
                 {control.responsable_1 ? ` · ${control.responsable_1}` : ""}
               </span>
             </div>
-            {etiquetasBase.length > 0 && (
+            {etiquetasControl1.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-1.5">
-                {etiquetasBase.map((e) => (
+                {etiquetasControl1.map((e) => (
                   <span key={e} className="px-2 py-0.5 rounded-full text-[11px] bg-white text-g700 border border-g200">{e}</span>
                 ))}
               </div>
             )}
-            {control.detalle
-              ? <div className="text-[12px] text-gy700">{control.detalle}</div>
-              : etiquetasBase.length === 0 && <div className="text-[12px] text-gy400 italic">Sin etiquetas ni observaciones en el Control 1</div>}
+            {/* Editable: se puede corregir la etiqueta/comentario del Control 1 desde acá */}
+            <input type="text"
+              className="w-full px-2.5 py-1.5 border-2 border-gy200 rounded-[6px] text-[12px] bg-white focus:outline-none focus:border-g500"
+              placeholder="Detalle / observación del Control 1..."
+              value={detalle}
+              onChange={(e) => setDetalle(e.target.value)} />
           </div>
         )}
 
@@ -463,19 +494,6 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
                   : <i className="ti ti-device-floppy text-[13px]" />}
                 Guardar
               </button>
-              {/* Guardar correcciones (etiquetas, detalle, muestras) sin controlar:
-                  el registro queda pendiente, no pasa a Observado. Solo en
-                  Control 2: en Control 1 no tiene sentido (recién arranca). */}
-              {etapa === "c2" && (
-                <button onClick={guardarEdicion} disabled={saving || savingEdicion}
-                  title="Guarda las correcciones sin marcar OK/Observar (queda pendiente)"
-                  className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-white text-g700 border border-g300 rounded-[6px] hover:bg-g50 disabled:opacity-50">
-                  {savingEdicion
-                    ? <span className="w-3 h-3 border-2 border-g300 border-t-g600 rounded-full animate-spin" />
-                    : <i className="ti ti-edit text-[13px]" />}
-                  Guardar cambios
-                </button>
-              )}
             </div>
             <div className="flex-1 min-w-[240px]">
               <ResponsableSelector
@@ -605,17 +623,15 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
         {tipo === "pre" && (
           <div className="mb-3">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-gy400 mb-1.5">
-              Etiquetas{etapa === "c2" && <span className="ml-1 normal-case tracking-normal text-gy400 font-normal">(las del Control 1 quedan fijas; podés agregar más)</span>}
+              Etiquetas{etapa === "c2" && <span className="ml-1 normal-case tracking-normal text-gy400 font-normal">(se pueden modificar las del Control 1)</span>}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {ETIQUETAS_PRE.map((e) => {
                 const on = etiquetas.includes(e);
-                const locked = etiquetasBase.includes(e);
                 return (
-                  <button key={e} type="button" onClick={() => toggleEtiqueta(e)} disabled={locked}
-                    title={locked ? "Etiqueta del Control 1 (no se puede quitar)" : undefined}
-                    className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors ${on ? "bg-g700 text-white border-g700" : "bg-gy50 text-gy600 border-gy200 hover:border-g400 hover:text-g700"} ${locked ? "opacity-90 cursor-default" : ""}`}>
-                    {locked ? <i className="ti ti-lock text-[11px] mr-1" /> : on && <i className="ti ti-check text-[11px] mr-1" />}{e}
+                  <button key={e} type="button" onClick={() => toggleEtiqueta(e)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors ${on ? "bg-g700 text-white border-g700" : "bg-gy50 text-gy600 border-gy200 hover:border-g400 hover:text-g700"}`}>
+                    {on && <i className="ti ti-check text-[11px] mr-1" />}{e}
                   </button>
                 );
               })}
@@ -664,11 +680,26 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
           <div className="text-[10px] font-semibold uppercase tracking-wide text-gy400 mb-1">
             {etapa === "c2" ? "Observación del Control 2" : "Detalle / Observación"}
           </div>
-          <input type="text"
-            className="w-full px-2.5 py-1.5 border-2 border-gy200 rounded-[6px] text-[12px] bg-gy50 focus:outline-none focus:border-g500"
-            placeholder={tipo === "pre" ? "Describir si hay observación..." : "Observaciones de cobranza..."}
-            value={etapa === "c2" ? detalle2 : detalle}
-            onChange={(e) => (etapa === "c2" ? setDetalle2(e.target.value) : setDetalle(e.target.value))} />
+          <div className="flex gap-2 items-start">
+            <input type="text"
+              className="flex-1 px-2.5 py-1.5 border-2 border-gy200 rounded-[6px] text-[12px] bg-gy50 focus:outline-none focus:border-g500"
+              placeholder={tipo === "pre" ? "Describir si hay observación..." : "Observaciones de cobranza..."}
+              value={etapa === "c2" ? detalle2 : detalle}
+              onChange={(e) => (etapa === "c2" ? setDetalle2(e.target.value) : setDetalle(e.target.value))} />
+            {/* Guarda etiquetas/detalle/responsable sin controlar (el registro
+                queda pendiente, no pasa a Observado). Separado del botón
+                "Guardar" de arriba para que no se confundan al tocarlos. */}
+            {tipo === "pre" && etapa === "c2" && (
+              <button onClick={guardarEdicion} disabled={saving || savingEdicion}
+                title="Guarda las correcciones (etiquetas, detalle, responsable) sin marcar OK/Observar"
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-white text-g700 border border-g300 rounded-[6px] hover:bg-g50 disabled:opacity-50">
+                {savingEdicion
+                  ? <span className="w-3 h-3 border-2 border-g300 border-t-g600 rounded-full animate-spin" />
+                  : <i className="ti ti-edit text-[13px]" />}
+                Guardar cambios
+              </button>
+            )}
+          </div>
         </div>
 
         {tipo === "pre" && etapa === "obs" && sugerido && (
