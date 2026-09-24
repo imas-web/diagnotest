@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { ObservadosList } from "@/components/preanalitica/ObservadosList";
 import { landingPathForRole } from "@/lib/utils/roles";
+import { adjuntarIndicacionesPedido } from "@/lib/preanalitica/indicacionesPedido";
 
 // Caché corta (10s); cada acción revalida al instante vía revalidarPreanalitica().
 export const revalidate = 10;
@@ -29,12 +30,13 @@ export default async function PreanaliticaObservadosPage() {
       *,
       retiro:retiro_id(
         id, cantidad_muestras, comentarios, urgente, fecha_operativa, timestamp_carga,
-        veterinaria_texto_original, codigo_original, comprobante_url,
+        veterinaria_texto_original, codigo_original, comprobante_url, pedido_id,
         personal:personal_id(nombre)
       )
     `)
     .in("estado", ["observado", "rechazado"])
     .order("updated_at", { ascending: false });
+  await adjuntarIndicacionesPedido(supabase, controles ?? []);
 
   return (
     <div>

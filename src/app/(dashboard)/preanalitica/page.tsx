@@ -5,6 +5,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { PreanaliticaBandeja } from "@/components/preanalitica/PreanaliticaBandeja";
 import { MuestrasPorCadete } from "@/components/caja/MuestrasPorCadete";
 import { landingPathForRole } from "@/lib/utils/roles";
+import { adjuntarIndicacionesPedido } from "@/lib/preanalitica/indicacionesPedido";
 
 // Caché corta (10s) en vez de reconsultar en cada refresh: baja la carga sobre
 // la base (que amplificaba el "0" bajo presión) manteniendo datos casi frescos.
@@ -36,7 +37,7 @@ export default async function PreanaliticaPage() {
       *,
       retiro:retiro_id!inner(
         id, cantidad_muestras, comentarios, urgente, fecha_operativa, timestamp_carga,
-        veterinaria_texto_original, codigo_original, comprobante_url, segunda_visita,
+        veterinaria_texto_original, codigo_original, comprobante_url, segunda_visita, pedido_id,
         personal:personal_id(nombre),
         veterinaria:veterinaria_id(codigo, nombre)
       )
@@ -65,6 +66,7 @@ export default async function PreanaliticaPage() {
     if (!error && (count == null || controles.length >= count)) break;
     if (intento < 2) await new Promise((r) => setTimeout(r, 200));
   }
+  await adjuntarIndicacionesPedido(supabase, controles);
 
   // Responsable activo por etapa (para precargar la barra de "quién controla"
   // aunque la bandeja esté vacía). Defensivo por si la tabla aún no existe.

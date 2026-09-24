@@ -57,6 +57,12 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
   const retiro = control.retiro as AnyRecord;
   const personal = retiro?.personal as AnyRecord;
   const isUrgente = control.urgente || retiro?.urgente;
+  // Indicaciones que jefe_logistica cargó al asignar el pedido de retiro —
+  // preanalítica solo las lee, no las puede editar (eso se edita desde
+  // Pedidos). retiros.pedido_id no tiene FK declarada, así que el server
+  // resuelve esto a mano (no vía embed de PostgREST) y lo deja en este campo
+  // plano.
+  const indicacionesPedido = retiro?.pedido_detalle as string | null | undefined;
 
   const [ctrl1, setCtrl1] = useState(control.control_1 ?? "");
   const [ctrl2, setCtrl2] = useState(control.control_2 ?? "");
@@ -441,6 +447,14 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
             <div className="flex-1">
               <div className="text-[9px] uppercase tracking-wide text-gy400 font-semibold mb-0.5">Comentarios</div>
               <div className="text-[12px] text-gy600">{retiro.comentarios}</div>
+            </div>
+          )}
+          {tipo !== "cob" && indicacionesPedido && (
+            <div className="flex-1">
+              <div className="text-[9px] uppercase tracking-wide text-gy400 font-semibold mb-0.5 flex items-center gap-1">
+                <i className="ti ti-lock text-[10px]" /> Indicaciones para el retiro
+              </div>
+              <div className="text-[12px] text-gy600">{indicacionesPedido}</div>
             </div>
           )}
         </div>
