@@ -64,8 +64,11 @@ export function RevertirConfirmados({ candidatos }: { candidatos: AnyRecord[] })
           </div>
         </div>
         <button type="button" onClick={() => setDescartado(true)}
-          className="shrink-0 text-gy400 hover:text-gy700" title="No es un error, ocultar">
-          <i className="ti ti-x text-[16px]" />
+          className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-gy400 hover:text-gy700 hover:bg-gy100"
+          title="No es un error, ocultar" aria-label="Ocultar aviso">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M4 4l16 16M20 4L4 20" />
+          </svg>
         </button>
       </div>
 
