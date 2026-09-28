@@ -46,6 +46,7 @@ export function DuplicadosList({ duplicados }: { duplicados: AnyRecord[] }) {
     const ids = Array.from(seleccionados);
     if (!ids.length) return;
     if (accion === "anular" && !window.confirm(`¿Descartar estos ${ids.length} retiro(s) por ser duplicados?\n\nNo se eliminan: quedan anulados (no suman a las muestras ni a los totales) y salen de las bandejas, pero los registros se conservan.`)) return;
+    if (accion === "confirmar" && !window.confirm(`¿Confirmar estos ${ids.length} retiro(s) como válidos (NO son duplicados)?\n\nVuelven a sumar a muestras y totales. Si en realidad son duplicados, usá "Descartar seleccionados" en vez de esto.`)) return;
 
     setResolviendoLote(accion);
     const res = await fetch("/api/retiros/duplicados/resolver", {
