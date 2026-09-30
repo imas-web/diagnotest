@@ -8,6 +8,7 @@ import { fmtMoneySign } from "@/lib/utils/format";
 export interface RendicionCadete {
   personalId: string;
   nombre: string;
+  fecha: string;
   totalEfectivo: number;
   totalDigital: number;
   totalRecaudado: number;
@@ -16,8 +17,6 @@ export interface RendicionCadete {
   gastos: { descripcion: string; monto: number; tipo: string }[];
   totalGastos: number;
   efectivoEsperado: number;
-  fechaDesde: string | null;
-  fechaHasta: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rendicion: any | null;
 }
@@ -85,7 +84,7 @@ export function ControlCaja({ fecha, items, revisados }: { fecha: string; items:
             <div className="py-12 text-center text-gy400">No hay rendiciones pendientes de revisión en esta fecha</div>
           ) : (
             pendientes.map((it) => (
-              <CadeteCard key={it.personalId} item={it} fecha={fecha} onSaved={() => router.refresh()} />
+              <CadeteCard key={it.personalId + "|" + it.fecha} item={it} onSaved={() => router.refresh()} />
             ))
           )}
         </div>
@@ -222,7 +221,7 @@ function RevisadoTabla({ rows }: { rows: RevisadoRow[] }) {
   );
 }
 
-function CadeteCard({ item, fecha, onSaved }: { item: RendicionCadete; fecha: string; onSaved: () => void }) {
+function CadeteCard({ item, onSaved }: { item: RendicionCadete; onSaved: () => void }) {
   const r = item.rendicion;
   const [modo, setModo] = useState<"none" | "diferencia">("none");
   const [recibido, setRecibido] = useState("");
@@ -239,7 +238,7 @@ function CadeteCard({ item, fecha, onSaved }: { item: RendicionCadete; fecha: st
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         personalId: item.personalId,
-        fecha,
+        fecha: item.fecha,
         estado,
         importeValidado: estado === "diferencia" ? parseFloat(recibido) : undefined,
         observacion: obs || undefined,
@@ -257,11 +256,7 @@ function CadeteCard({ item, fecha, onSaved }: { item: RendicionCadete; fecha: st
   const yaDiferencia = r?.estado === "diferencia";
   const dif = Number(r?.diferencia ?? 0);
 
-  // Rango de fechas que abarca esta caja (formato DD/MM).
   const fmtDiaCorto = (f: string) => { const [, m, d] = f.split("-"); return `${d}/${m}`; };
-  const rango = item.fechaDesde && item.fechaHasta
-    ? (item.fechaDesde === item.fechaHasta ? fmtDiaCorto(item.fechaDesde) : `${fmtDiaCorto(item.fechaDesde)} → ${fmtDiaCorto(item.fechaHasta)}`)
-    : null;
 
   return (
     <div className={`bg-white rounded-[14px] border shadow-sm overflow-hidden ${yaDiferencia ? "border-l-4 border-l-red-500 border-gy200" : yaValidado ? "border-l-4 border-l-g500 border-gy200" : "border-gy200"}`}>
@@ -278,11 +273,9 @@ function CadeteCard({ item, fecha, onSaved }: { item: RendicionCadete; fecha: st
             <i className="ti ti-alert-triangle" /> Diferencia {dif >= 0 ? "+" : ""}{fmtMoneySign(dif)}
           </span>
         )}
-        {rango && (
-          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gy600 bg-white border border-gy200 rounded-full px-2 py-0.5">
-            <i className="ti ti-calendar text-[12px] text-gy400" /> {rango}
-          </span>
-        )}
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gy600 bg-white border border-gy200 rounded-full px-2 py-0.5">
+          <i className="ti ti-calendar text-[12px] text-gy400" /> {fmtDiaCorto(item.fecha)}
+        </span>
         <span className="ml-auto text-[11px] text-gy400">
           {item.retirosEfectivo + item.retirosDigital} retiro{item.retirosEfectivo + item.retirosDigital !== 1 ? "s" : ""}
         </span>

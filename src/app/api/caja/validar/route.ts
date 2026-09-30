@@ -50,17 +50,18 @@ export async function POST(req: Request) {
     return rows;
   }
 
-  // La "caja abierta" del cadete = todos sus retiros/gastos no validados
-  // (rendicion_id NULL), sin importar el día. Recalculamos desde la base.
+  // El corte es por día: solo se sellan los retiros/gastos no validados de
+  // ESE día operativo del cadete (no todo lo acumulado hasta esa fecha) —
+  // así cada jornada se rinde por separado, como hacen los cadetes.
   const [retiros, gastos] = await Promise.all([
     fetchAllRows<{ id: string; importe_declarado: number; metodo_pago: string }>((from, to) =>
       admin.from("retiros").select("id, importe_declarado, metodo_pago")
-        .eq("personal_id", personalId).eq("anulado", false).is("rendicion_id", null).lte("fecha_operativa", fecha)
+        .eq("personal_id", personalId).eq("anulado", false).is("rendicion_id", null).eq("fecha_operativa", fecha)
         .range(from, to)
     ),
     fetchAllRows<{ id: string; monto: number }>((from, to) =>
       admin.from("gastos").select("id, monto")
-        .eq("personal_id", personalId).is("rendicion_id", null).lte("fecha_operativa", fecha)
+        .eq("personal_id", personalId).is("rendicion_id", null).eq("fecha_operativa", fecha)
         .range(from, to)
     ),
   ]);
@@ -113,12 +114,12 @@ export async function POST(req: Request) {
   // URL enorme que Supabase rechaza.
   if (retiros.length) {
     const { error } = await admin.from("retiros").update({ rendicion_id: rend.id })
-      .eq("personal_id", personalId).eq("anulado", false).is("rendicion_id", null).lte("fecha_operativa", fecha);
+      .eq("personal_id", personalId).eq("anulado", false).is("rendicion_id", null).eq("fecha_operativa", fecha);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
   if (gastos.length) {
     const { error } = await admin.from("gastos").update({ rendicion_id: rend.id })
-      .eq("personal_id", personalId).is("rendicion_id", null).lte("fecha_operativa", fecha);
+      .eq("personal_id", personalId).is("rendicion_id", null).eq("fecha_operativa", fecha);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
 

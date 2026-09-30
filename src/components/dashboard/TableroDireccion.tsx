@@ -11,6 +11,7 @@ export type DashData = {
   rows: number[]; // flat [day, cadIdx, vetIdx, retiros, muestras, ...]
   calidad: { okPct: number; observadoPct: number; observadoCount: number; pendientes: number; tiempoControlHs: number };
   cobranzas: { efectivoDeclarado: number; efectivoValidado: number; pendientes: number };
+  cobranzasPorResponsable: { nombre: string; validado: number; pct: number }[];
   productividad: { persona: string; count: number }[];
   cargaPorHora: { hora: number; count: number }[];
   calidadPrev: { okPct: number; tiempoControlHs: number };

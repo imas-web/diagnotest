@@ -51,6 +51,7 @@ type Kpi = {
   deltaLabel?: ReactNode;
   tone: Tone;
   serie: Period[]; // cronológico, más antiguo primero
+  porResponsable?: { nombre: string; validado: number; pct: number }[];
 };
 
 export function Scorecard({ data }: { data: DashData }) {
@@ -316,6 +317,7 @@ export function Scorecard({ data }: { data: DashData }) {
         tone: tone(cobActualPct, cobPrevPct, "higher", 0.97, 0.90),
         deltaLabel: cobPrevPct != null ? <>mes anterior: {fmtPct(cobPrevPct)}</> : undefined,
         serie: serieCob,
+        porResponsable: data.cobranzasPorResponsable,
       },
     ];
 
@@ -428,6 +430,28 @@ function SerieModal({ kpi, onClose }: { kpi: Kpi; onClose: () => void }) {
           </button>
         </div>
         <div className="overflow-y-auto p-5">
+          {kpi.porResponsable && kpi.porResponsable.length > 0 && (
+            <div className="mb-5">
+              <h4 className="text-[11px] font-bold uppercase tracking-wide text-gy400 mb-2.5">Por responsable · mes en curso</h4>
+              <div className="space-y-2.5">
+                {kpi.porResponsable.map((r) => (
+                  <div key={r.nombre} className="grid grid-cols-[1fr_auto] items-center gap-2.5">
+                    <div>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[13px] font-medium text-gy800">{r.nombre}</span>
+                        <span className="text-[12px] font-bold font-mono text-gy700">{fmtPct(r.pct)}</span>
+                      </div>
+                      <div className="h-[7px] rounded-full bg-gy100 overflow-hidden mt-1">
+                        <div className="h-full rounded-full bg-g500" style={{ width: `${Math.min(100, Math.round(r.pct))}%` }} />
+                      </div>
+                    </div>
+                    <span className="text-[11.5px] text-gy400 font-mono whitespace-nowrap">{fmtMoney(r.validado)}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-gy400 mt-2.5">% del efectivo declarado del mes que validó cada uno. La suma se acerca al total de la tarjeta, salvo diferencias/no corresponde.</p>
+            </div>
+          )}
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr>

@@ -68,45 +68,39 @@ export default async function CajaPage({
       .limit(500),
   ]);
 
-  // Agregación por cadete.
+  // Agregación por cadete + día operativo: los cadetes rinden la caja con
+  // corte diario, así que una caja pendiente de varios días atrás se muestra
+  // como una tarjeta por día (no un solo total mezclando todo el rango).
   const map = new Map<string, RendicionCadete>();
-  const ensure = (id: string, nombre: string) => {
-    if (!map.has(id)) {
-      map.set(id, {
-        personalId: id, nombre,
+  const ensure = (id: string, nombre: string, fecha: string) => {
+    const key = id + "|" + fecha;
+    if (!map.has(key)) {
+      map.set(key, {
+        personalId: id, nombre, fecha,
         totalEfectivo: 0, totalDigital: 0, totalRecaudado: 0,
         retirosEfectivo: 0, retirosDigital: 0,
         gastos: [], totalGastos: 0, efectivoEsperado: 0,
-        fechaDesde: null, fechaHasta: null,
         rendicion: null,
       });
     }
-    return map.get(id)!;
-  };
-
-  // Amplía el rango de fechas (YYYY-MM-DD) que abarca la caja abierta del cadete.
-  const ampliarRango = (a: RendicionCadete, f: string | null | undefined) => {
-    if (!f) return;
-    if (!a.fechaDesde || f < a.fechaDesde) a.fechaDesde = f;
-    if (!a.fechaHasta || f > a.fechaHasta) a.fechaHasta = f;
+    return map.get(key)!;
   };
 
   for (const r of retiros ?? []) {
     const nombre = (r.personal as { nombre?: string } | null)?.nombre ?? "Sin nombre";
-    const a = ensure(r.personal_id, nombre);
+    const a = ensure(r.personal_id, nombre, r.fecha_operativa);
     const m = Number(r.importe_declarado ?? 0);
     if (r.metodo_pago === "efectivo") { a.totalEfectivo += m; a.retirosEfectivo += 1; }
     else { a.totalDigital += m; a.retirosDigital += 1; }
-    ampliarRango(a, r.fecha_operativa);
   }
   for (const g of gastos ?? []) {
     const nombre = (g.personal as { nombre?: string } | null)?.nombre ?? "Sin nombre";
-    const a = ensure(g.personal_id, nombre);
+    const a = ensure(g.personal_id, nombre, g.fecha_operativa);
     a.gastos.push({ descripcion: g.descripcion, monto: Number(g.monto ?? 0), tipo: g.tipo });
     a.totalGastos += Number(g.monto ?? 0);
-    ampliarRango(a, g.fecha_operativa);
   }
-  const items = Array.from(map.values()).sort((x, y) => x.nombre.localeCompare(y.nombre, "es"));
+  // Más antiguo primero: son los cortes atrasados, los que más urge revisar.
+  const items = Array.from(map.values()).sort((x, y) => x.fecha.localeCompare(y.fecha) || x.nombre.localeCompare(y.nombre, "es"));
   for (const a of items) {
     a.totalRecaudado = a.totalEfectivo + a.totalDigital;
     a.efectivoEsperado = a.totalEfectivo - a.totalGastos;

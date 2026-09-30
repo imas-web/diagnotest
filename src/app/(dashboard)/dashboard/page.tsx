@@ -18,7 +18,7 @@ type VetRow = { id: string; nombre: string; zona_id: string | null };
 type PersonalRow = { id: string; nombre: string };
 type ZonaRow = { id: string; nombre: string };
 type ControlMesRow = { estado: string; responsable_2: string | null; updated_at: string; retiro: { timestamp_carga: string } | { timestamp_carga: string }[] | null };
-type CobranzaMesRow = { estado: string; importe_declarado: number | null; importe_validado: number | null };
+type CobranzaMesRow = { estado: string; importe_declarado: number | null; importe_validado: number | null; responsable_id: string | null };
 
 // Pagina un select simple (sin joins) trayendo TODAS las filas: PostgREST
 // limita cada request a 1000 filas, así que se piden todas las páginas en
@@ -110,7 +110,7 @@ export default async function DashboardPage() {
       const chunks = await Promise.all(
         Array.from({ length: pages }, (_, i) =>
           admin.from("control_cobranzas")
-            .select("estado,importe_declarado,importe_validado,retiro:retiro_id!inner(fecha_operativa)")
+            .select("estado,importe_declarado,importe_validado,responsable_id,retiro:retiro_id!inner(fecha_operativa)")
             .gte("retiro.fecha_operativa", firstDayMonth)
             .range(i * 1000, i * 1000 + 999)
         )
@@ -247,6 +247,23 @@ export default async function DashboardPage() {
   const efectivoValidado = cobranzasMes.filter((c) => c.estado !== "pendiente").reduce((s, c) => s + (c.importe_validado ?? c.importe_declarado ?? 0), 0);
   const cobranzasPendientes = cobranzasMes.filter((c) => c.estado === "pendiente").length;
 
+  // Aporte de cada responsable de cobranzas al % validado del mes (quién
+  // adjudicó qué parte del efectivo declarado por logística).
+  const validadoPorResponsable = new Map<string, number>();
+  for (const c of cobranzasMes) {
+    if (c.estado === "pendiente" || !c.responsable_id) continue;
+    validadoPorResponsable.set(c.responsable_id, (validadoPorResponsable.get(c.responsable_id) ?? 0) + (c.importe_validado ?? c.importe_declarado ?? 0));
+  }
+  const respIds = Array.from(validadoPorResponsable.keys());
+  const nombrePorResponsable = new Map<string, string>();
+  if (respIds.length) {
+    const { data: profs } = await admin.from("profiles").select("id, nombre").in("id", respIds);
+    for (const p of profs ?? []) nombrePorResponsable.set(p.id, p.nombre);
+  }
+  const cobranzasPorResponsable = Array.from(validadoPorResponsable.entries())
+    .map(([id, validado]) => ({ nombre: nombrePorResponsable.get(id) ?? "Sin nombre", validado, pct: efectivoDeclarado ? (validado / efectivoDeclarado) * 100 : 0 }))
+    .sort((a, b) => b.validado - a.validado);
+
   // ---- Mes anterior (referencia del Scorecard) ----
   const totalJuzgadoPrev = okCountPrev + obsCountPrev + rechCountPrev;
   const efectivoDeclaradoPrev = cobranzasPrevMes.reduce((s, c) => s + (c.importe_declarado ?? 0), 0);
@@ -270,6 +287,7 @@ export default async function DashboardPage() {
       efectivoValidado,
       pendientes: cobranzasPendientes,
     },
+    cobranzasPorResponsable,
     productividad,
     cargaPorHora,
     calidadPrev: {
