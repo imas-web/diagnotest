@@ -441,8 +441,13 @@ export function ChatApp({
 
   return (
     <div className="flex-1 flex min-h-0">
-      {/* Lista de conversaciones */}
-      <div className="w-[280px] shrink-0 border-r border-gy200 bg-white flex flex-col min-h-0">
+      {/* Lista de conversaciones — en mobile ocupa toda la pantalla y se
+          oculta al abrir una conversación (patrón WhatsApp); en desktop
+          (md+) las dos columnas conviven siempre, como antes. */}
+      <div className={cn(
+        "w-full md:w-[280px] shrink-0 border-r border-gy200 bg-white flex-col min-h-0",
+        seleccionada ? "hidden md:flex" : "flex"
+      )}>
         <div className="p-3 border-b border-gy100">
           <button
             onClick={() => setMostrarNuevo(true)}
@@ -504,8 +509,9 @@ export function ChatApp({
         </div>
       </div>
 
-      {/* Panel de mensajes */}
-      <div className="flex-1 flex flex-col min-h-0 bg-gy50">
+      {/* Panel de mensajes — en mobile solo se ve cuando hay una conversación
+          elegida (si no, se ve la lista de arriba); en desktop siempre visible. */}
+      <div className={cn("flex-1 flex-col min-h-0 bg-gy50", seleccionada ? "flex" : "hidden md:flex")}>
         {!conversacionActual ? (
           <div className="flex-1 flex items-center justify-center text-[13px] text-gy400">
             Elegí una conversación para empezar
@@ -513,6 +519,10 @@ export function ChatApp({
         ) : (
           <>
             <div className="h-[52px] shrink-0 bg-white border-b border-gy200 flex items-center px-4 gap-2.5">
+              <button onClick={() => setSeleccionada(null)}
+                className="md:hidden -ml-1.5 w-8 h-8 flex items-center justify-center rounded-full text-gy600 hover:bg-gy100 shrink-0">
+                <i className="ti ti-arrow-left text-[18px]" />
+              </button>
               <i className={cn("ti", iconoConversacion(conversacionActual), "text-[16px] text-g600")} />
               <span className="text-[13px] font-semibold text-gy900">{nombreConversacion(conversacionActual, me.id)}</span>
             </div>
