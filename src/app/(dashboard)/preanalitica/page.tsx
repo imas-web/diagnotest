@@ -76,7 +76,7 @@ export default async function PreanaliticaPage() {
             recibe de cada cadete al llegar (V1/V2 editables). */}
         <MuestrasPorCadete />
 
-        <PreanaliticaBandeja controles={controles ?? []} />
+        <PreanaliticaBandeja controles={controles ?? []} usuarioId={user.id} />
       </div>
     </div>
   );

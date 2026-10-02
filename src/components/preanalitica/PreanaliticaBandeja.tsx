@@ -43,45 +43,48 @@ function etiquetaFecha(iso: string): string {
   });
 }
 
-// La barra "¿Quién controla?" se precarga con lo último que ESTA cuenta marcó
-// acá (localStorage, por navegador/cuenta) — no con lo que haya en la bandeja
-// compartida ni con un "activo" global por etapa: eso hacía que, si
+// La barra "¿Quién controla?" se precarga con lo último que ESTA CUENTA marcó
+// acá (localStorage, con clave por usuarioId) — no con lo que haya en la
+// bandeja compartida ni con un "activo" global por etapa: eso hacía que, si
 // preanalítica 2 marcaba a Soledad, a preanalítica 1/3/4 también les
-// apareciera Soledad fija apenas abrían su propia bandeja.
-const LS_KEY: Record<Etapa, string> = {
-  c1: "diagnotest_preanalitica_resp_c1",
-  c2: "diagnotest_preanalitica_resp_c2",
-};
-function leerRespGuardado(etapa: Etapa): string | null {
+// apareciera Soledad fija apenas abrían su propia bandeja. Se incluye el
+// usuarioId en la clave (no solo la etapa) porque varias cuentas pueden
+// compartir la misma compu/navegador a lo largo del día — sin eso, aunque
+// cada una esté en su propia sesión, verían la selección de la cuenta
+// anterior que usó ese mismo navegador.
+function lsKey(etapa: Etapa, usuarioId: string): string {
+  return `diagnotest_preanalitica_resp_${etapa}_${usuarioId}`;
+}
+function leerRespGuardado(etapa: Etapa, usuarioId: string): string | null {
   try {
-    return localStorage.getItem(LS_KEY[etapa]) || null;
+    return localStorage.getItem(lsKey(etapa, usuarioId)) || null;
   } catch {
     return null;
   }
 }
-function guardarResp(etapa: Etapa, valor: string | null) {
+function guardarResp(etapa: Etapa, usuarioId: string, valor: string | null) {
   try {
-    if (valor) localStorage.setItem(LS_KEY[etapa], valor);
-    else localStorage.removeItem(LS_KEY[etapa]);
+    if (valor) localStorage.setItem(lsKey(etapa, usuarioId), valor);
+    else localStorage.removeItem(lsKey(etapa, usuarioId));
   } catch {
     /* localStorage no disponible (ej. navegación privada) */
   }
 }
 
-export function PreanaliticaBandeja({ controles }: { controles: AnyRecord[] }) {
+export function PreanaliticaBandeja({ controles, usuarioId }: { controles: AnyRecord[]; usuarioId: string }) {
   const router = useRouter();
   const [etapa, setEtapa] = useState<Etapa>("c1");
   const [filtro, setFiltro] = useState<Filtro>("fecha");
   // Responsable por etapa (barra de "Quién controla"), personal de esta
-  // cuenta/navegador: arranca vacío en el render del servidor (localStorage
-  // no existe ahí) y se completa apenas monta, para no mezclar con el HTML
-  // de otra sesión.
+  // cuenta: arranca vacío en el render del servidor (localStorage no existe
+  // ahí) y se completa apenas monta, para no mezclar con el HTML de otra
+  // sesión ni con lo que haya quedado de otra cuenta en este mismo navegador.
   const [respC1, setRespC1] = useState<string | null>(null);
   const [respC2, setRespC2] = useState<string | null>(null);
   useEffect(() => {
-    setRespC1(leerRespGuardado("c1"));
-    setRespC2(leerRespGuardado("c2"));
-  }, []);
+    setRespC1(leerRespGuardado("c1", usuarioId));
+    setRespC2(leerRespGuardado("c2", usuarioId));
+  }, [usuarioId]);
   const [aplicando, setAplicando] = useState(false);
   // Dos buscadores que filtran en vivo y se COMBINAN (acumulativos): mientras
   // haya algo escrito en "cadete", el filtro de veterinaria/código solo busca
@@ -147,7 +150,7 @@ export function PreanaliticaBandeja({ controles }: { controles: AnyRecord[] }) {
   // se toca el selector, no solo al aplicar — así queda recordado aunque
   // todavía no se haya tocado "Aplicar a toda la bandeja".
   const etapaParaGuardar = etapa;
-  const setRespActual = (v: string | null) => { setRespState(v); guardarResp(etapaParaGuardar, v); };
+  const setRespActual = (v: string | null) => { setRespState(v); guardarResp(etapaParaGuardar, usuarioId, v); };
   const countActual = etapa === "c1" ? c1Count : c2Count;
 
   async function aplicarResponsable() {
