@@ -62,6 +62,13 @@ export function ChatApp({
   // Menú "Foto / Documento" que se abre al tocar el clip, en vez de ir
   // directo al selector de archivos.
   const [mostrarAdjuntoMenu, setMostrarAdjuntoMenu] = useState(false);
+  // Alta de grupos nuevos (reservado a dueño/super_admin) dentro del mismo
+  // modal de "Nuevo mensaje", ver crearGrupo().
+  const [modoCrearGrupo, setModoCrearGrupo] = useState(false);
+  const [nombreGrupo, setNombreGrupo] = useState("");
+  const [miembrosGrupo, setMiembrosGrupo] = useState<Set<string>>(new Set());
+  const [creandoGrupo, setCreandoGrupo] = useState(false);
+  const puedeCrearGrupos = me.rol === "dueno" || me.rol === "super_admin";
 
   const fileInputFoto = useRef<HTMLInputElement>(null);
   const fileInputDoc = useRef<HTMLInputElement>(null);
@@ -326,6 +333,43 @@ export function ChatApp({
     setConversaciones((prev) => [...prev, nuevaConv]);
     setSeleccionada(json.conversacionId);
     setMostrarNuevo(false);
+    setBuscarContacto("");
+  }
+
+  function toggleMiembroGrupo(id: string) {
+    setMiembrosGrupo((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function crearGrupo() {
+    const nombre = nombreGrupo.trim();
+    if (!nombre) { toast("error", "Ponele un nombre al grupo"); return; }
+    if (!miembrosGrupo.size) { toast("error", "Elegí al menos un integrante"); return; }
+    setCreandoGrupo(true);
+    const res = await fetch("/api/chat/grupos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre, miembroIds: Array.from(miembrosGrupo) }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setCreandoGrupo(false);
+    if (!res.ok || !json.conversacionId) { toast("error", json.error ?? "No se pudo crear el grupo"); return; }
+
+    toast("success", json.reutilizado ? `Se sumaron al grupo "${json.nombre}" ✓` : `Grupo "${json.nombre}" creado ✓`);
+    const nuevaConv: Conversacion = {
+      id: json.conversacionId, tipo: "grupo", nombre: json.nombre, dm_clave: null, created_at: new Date().toISOString(),
+      chat_miembros: Array.from(miembrosGrupo).map((id) => ({ profile_id: id, profiles: id === me.id ? me : contactos.find((c) => c.id === id) ?? null })),
+    };
+    setConversaciones((prev) => (prev.some((c) => c.id === nuevaConv.id) ? prev : [...prev, nuevaConv]));
+    setGrupos((prev) => (prev.some((g) => g.id === json.conversacionId) ? prev : [...prev, { id: json.conversacionId, nombre: json.nombre }]));
+    setSeleccionada(json.conversacionId);
+    setMostrarNuevo(false);
+    setModoCrearGrupo(false);
+    setNombreGrupo("");
+    setMiembrosGrupo(new Set());
     setBuscarContacto("");
   }
 
@@ -622,69 +666,139 @@ export function ChatApp({
         )}
       </div>
 
-      {/* Modal: nuevo mensaje */}
+      {/* Modal: nuevo mensaje / crear grupo */}
       {mostrarNuevo && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setMostrarNuevo(false)}>
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setMostrarNuevo(false); setModoCrearGrupo(false); }}>
           <div className="bg-white rounded-[14px] shadow-xl w-full max-w-[420px] max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-gy100 flex items-center justify-between">
-              <span className="text-[14px] font-semibold text-gy900">Nuevo mensaje</span>
-              <button onClick={() => setMostrarNuevo(false)} className="text-gy400 hover:text-gy700">
+            <div className="p-4 border-b border-gy100 flex items-center gap-2">
+              {modoCrearGrupo && (
+                <button onClick={() => setModoCrearGrupo(false)} className="text-gy400 hover:text-gy700">
+                  <i className="ti ti-arrow-left text-[18px]" />
+                </button>
+              )}
+              <span className="flex-1 text-[14px] font-semibold text-gy900">{modoCrearGrupo ? "Crear grupo" : "Nuevo mensaje"}</span>
+              <button onClick={() => { setMostrarNuevo(false); setModoCrearGrupo(false); }} className="text-gy400 hover:text-gy700">
                 <i className="ti ti-x text-[18px]" />
               </button>
             </div>
-            <div className="p-3 border-b border-gy100">
-              <input
-                autoFocus
-                type="search"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                name="buscar-contacto-chat"
-                value={buscarContacto}
-                onChange={(e) => setBuscarContacto(e.target.value)}
-                placeholder="Buscar por nombre o mail…"
-                className="w-full px-3 py-2 border-2 border-gy200 rounded-[8px] text-[12.5px] bg-gy50 focus:outline-none focus:border-g500"
-              />
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {gruposFiltrados.length > 0 && (
-                <div className="px-4 pt-2.5 pb-1 text-[10.5px] font-semibold text-gy400 uppercase tracking-wide">
-                  Grupos — se abre una conversación privada aparte
+
+            {modoCrearGrupo ? (
+              <>
+                <div className="p-3 border-b border-gy100 space-y-2.5">
+                  <input
+                    autoFocus
+                    value={nombreGrupo}
+                    onChange={(e) => setNombreGrupo(e.target.value)}
+                    placeholder="Nombre del grupo (ej. Carga)"
+                    className="w-full px-3 py-2 border-2 border-gy200 rounded-[8px] text-[12.5px] bg-gy50 focus:outline-none focus:border-g500"
+                  />
+                  <input
+                    type="search"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    name="buscar-contacto-grupo"
+                    value={buscarContacto}
+                    onChange={(e) => setBuscarContacto(e.target.value)}
+                    placeholder="Buscar integrantes por nombre o mail…"
+                    className="w-full px-3 py-2 border-2 border-gy200 rounded-[8px] text-[12.5px] bg-gy50 focus:outline-none focus:border-g500"
+                  />
                 </div>
-              )}
-              {gruposFiltrados.map((g) => (
-                <button key={g.id} onClick={() => abrirGrupo(g)}
-                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-gy50 border-b border-gy50">
-                  <div className="w-8 h-8 rounded-full bg-g100 text-g700 flex items-center justify-center text-[13px] shrink-0">
-                    <i className="ti ti-hash" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12.5px] font-medium text-gy900 truncate">{g.nombre ?? "Grupo"}</div>
-                  </div>
-                </button>
-              ))}
-              {contactosFiltrados.length > 0 && (
-                <div className="px-4 pt-2.5 pb-1 text-[10.5px] font-semibold text-gy400 uppercase tracking-wide">
-                  Personas
+                <div className="flex-1 overflow-y-auto">
+                  {contactosFiltrados.map((c) => (
+                    <label key={c.id}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-gy50 border-b border-gy50 cursor-pointer">
+                      <input type="checkbox" checked={miembrosGrupo.has(c.id)} onChange={() => toggleMiembroGrupo(c.id)}
+                        className="w-4 h-4 accent-g700 shrink-0" />
+                      <div className="w-8 h-8 rounded-full bg-gy100 text-gy600 flex items-center justify-center text-[10px] font-bold shrink-0">
+                        {initials(c.nombre)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12.5px] font-medium text-gy900 truncate">{c.nombre}</div>
+                        <div className="text-[11px] text-gy400 truncate">{c.email}</div>
+                      </div>
+                    </label>
+                  ))}
+                  {!contactosFiltrados.length && (
+                    <div className="p-6 text-center text-[12px] text-gy400">Sin resultados</div>
+                  )}
                 </div>
-              )}
-              {contactosFiltrados.map((c) => (
-                <button key={c.id} onClick={() => abrirDM(c.id)}
-                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-gy50 border-b border-gy50">
-                  <div className="w-8 h-8 rounded-full bg-gy100 text-gy600 flex items-center justify-center text-[10px] font-bold shrink-0">
-                    {initials(c.nombre)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12.5px] font-medium text-gy900 truncate">{c.nombre}</div>
-                    <div className="text-[11px] text-gy400 truncate">{c.email}</div>
-                  </div>
-                </button>
-              ))}
-              {!contactosFiltrados.length && !gruposFiltrados.length && (
-                <div className="p-6 text-center text-[12px] text-gy400">Sin resultados</div>
-              )}
-            </div>
+                <div className="p-3 border-t border-gy100 flex items-center gap-2.5">
+                  <span className="text-[11px] text-gy400 flex-1">{miembrosGrupo.size} seleccionado{miembrosGrupo.size === 1 ? "" : "s"}</span>
+                  <button onClick={crearGrupo} disabled={creandoGrupo || !nombreGrupo.trim() || !miembrosGrupo.size}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-g800 text-white text-[12px] font-medium rounded-[6px] hover:bg-g700 disabled:opacity-50">
+                    {creandoGrupo && <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                    Crear grupo
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="p-3 border-b border-gy100">
+                  <input
+                    autoFocus
+                    type="search"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    name="buscar-contacto-chat"
+                    value={buscarContacto}
+                    onChange={(e) => setBuscarContacto(e.target.value)}
+                    placeholder="Buscar por nombre o mail…"
+                    className="w-full px-3 py-2 border-2 border-gy200 rounded-[8px] text-[12.5px] bg-gy50 focus:outline-none focus:border-g500"
+                  />
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  {puedeCrearGrupos && (
+                    <button onClick={() => { setModoCrearGrupo(true); setMiembrosGrupo(new Set()); setNombreGrupo(""); setBuscarContacto(""); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-gy50 border-b border-gy50">
+                      <div className="w-8 h-8 rounded-full bg-g50 text-g700 flex items-center justify-center text-[15px] shrink-0">
+                        <i className="ti ti-users-plus" />
+                      </div>
+                      <div className="text-[12.5px] font-medium text-g700">Crear grupo nuevo</div>
+                    </button>
+                  )}
+                  {gruposFiltrados.length > 0 && (
+                    <div className="px-4 pt-2.5 pb-1 text-[10.5px] font-semibold text-gy400 uppercase tracking-wide">
+                      Grupos — se abre una conversación privada aparte
+                    </div>
+                  )}
+                  {gruposFiltrados.map((g) => (
+                    <button key={g.id} onClick={() => abrirGrupo(g)}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-gy50 border-b border-gy50">
+                      <div className="w-8 h-8 rounded-full bg-g100 text-g700 flex items-center justify-center text-[13px] shrink-0">
+                        <i className="ti ti-hash" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12.5px] font-medium text-gy900 truncate">{g.nombre ?? "Grupo"}</div>
+                      </div>
+                    </button>
+                  ))}
+                  {contactosFiltrados.length > 0 && (
+                    <div className="px-4 pt-2.5 pb-1 text-[10.5px] font-semibold text-gy400 uppercase tracking-wide">
+                      Personas
+                    </div>
+                  )}
+                  {contactosFiltrados.map((c) => (
+                    <button key={c.id} onClick={() => abrirDM(c.id)}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-gy50 border-b border-gy50">
+                      <div className="w-8 h-8 rounded-full bg-gy100 text-gy600 flex items-center justify-center text-[10px] font-bold shrink-0">
+                        {initials(c.nombre)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12.5px] font-medium text-gy900 truncate">{c.nombre}</div>
+                        <div className="text-[11px] text-gy400 truncate">{c.email}</div>
+                      </div>
+                    </button>
+                  ))}
+                  {!contactosFiltrados.length && !gruposFiltrados.length && (
+                    <div className="p-6 text-center text-[12px] text-gy400">Sin resultados</div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
