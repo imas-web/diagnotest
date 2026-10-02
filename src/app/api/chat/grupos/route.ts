@@ -37,20 +37,24 @@ export async function GET() {
 }
 
 // Crea un grupo nuevo (o, si ya existe uno con ese nombre, suma los
-// miembros a ese) — reservado a dueño/super_admin, igual que el alta de los
-// canales de sector existentes (Administración, Citología, etc.), para no
-// llenar la lista de grupos sin control. Se resuelve con el cliente admin
-// por el mismo motivo que /api/chat/dm: recién creada, la conversación no
-// tiene miembros todavía y la política de SELECT exige serlo (o ser
-// General), así que ni el propio creador podría releerla para confirmar.
+// miembros a ese) — reservado a Ignacio (dueño) y super_admin a propósito,
+// no a cualquier perfil con rol "dueno" (hay más de uno en el roster, ej.
+// Dirección), para no llenar la lista de grupos sin control. Se resuelve
+// con el cliente admin por el mismo motivo que /api/chat/dm: recién creada,
+// la conversación no tiene miembros todavía y la política de SELECT exige
+// serlo (o ser General), así que ni el propio creador podría releerla para
+// confirmar.
+const EMAIL_PERMITIDO_CREAR_GRUPO = "imas@diagnotest.com.ar";
+
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const { data: perfil } = await supabase.from("profiles").select("rol").eq("id", user.id).single();
-  if (!perfil || (perfil.rol !== "dueno" && perfil.rol !== "super_admin")) {
-    return NextResponse.json({ error: "Solo dueño o super admin pueden crear grupos" }, { status: 403 });
+  const esPermitido = perfil?.rol === "super_admin" || user.email?.toLowerCase() === EMAIL_PERMITIDO_CREAR_GRUPO;
+  if (!esPermitido) {
+    return NextResponse.json({ error: "No tenés permiso para crear grupos" }, { status: 403 });
   }
 
   let body: { nombre?: string; miembroIds?: string[] };

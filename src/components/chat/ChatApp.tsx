@@ -68,7 +68,9 @@ export function ChatApp({
   const [nombreGrupo, setNombreGrupo] = useState("");
   const [miembrosGrupo, setMiembrosGrupo] = useState<Set<string>>(new Set());
   const [creandoGrupo, setCreandoGrupo] = useState(false);
-  const puedeCrearGrupos = me.rol === "dueno" || me.rol === "super_admin";
+  // Reservado a Ignacio y a super_admin a propósito, no a cualquier "dueno"
+  // (hay más de un perfil con ese rol en el roster) — ver /api/chat/grupos.
+  const puedeCrearGrupos = me.rol === "super_admin" || me.email?.toLowerCase() === "imas@diagnotest.com.ar";
 
   const fileInputFoto = useRef<HTMLInputElement>(null);
   const fileInputDoc = useRef<HTMLInputElement>(null);
