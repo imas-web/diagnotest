@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ControlCard } from "@/components/ui/ControlCard";
 import { ResponsableSelector } from "@/components/preanalitica/ResponsableSelector";
@@ -43,37 +43,45 @@ function etiquetaFecha(iso: string): string {
   });
 }
 
-// Responsable "global" actual de una etapa: el que ya tienen los pendientes de
-// esa etapa (tras aplicarlo en masa, todos comparten el mismo). Toma el primero
-// no vacío para precargar la barra.
-function responsableActual(pendientes: AnyRecord[], etapa: Etapa): string {
-  const col = etapa === "c1" ? "responsable_1" : "responsable_2";
-  for (const c of pendientes) {
-    if (etapaDe(c) !== etapa) continue;
-    const v = (c[col] ?? "").toString().trim();
-    if (v) return v;
+// La barra "¿Quién controla?" se precarga con lo último que ESTA cuenta marcó
+// acá (localStorage, por navegador/cuenta) — no con lo que haya en la bandeja
+// compartida ni con un "activo" global por etapa: eso hacía que, si
+// preanalítica 2 marcaba a Soledad, a preanalítica 1/3/4 también les
+// apareciera Soledad fija apenas abrían su propia bandeja.
+const LS_KEY: Record<Etapa, string> = {
+  c1: "diagnotest_preanalitica_resp_c1",
+  c2: "diagnotest_preanalitica_resp_c2",
+};
+function leerRespGuardado(etapa: Etapa): string | null {
+  try {
+    return localStorage.getItem(LS_KEY[etapa]) || null;
+  } catch {
+    return null;
   }
-  return "";
+}
+function guardarResp(etapa: Etapa, valor: string | null) {
+  try {
+    if (valor) localStorage.setItem(LS_KEY[etapa], valor);
+    else localStorage.removeItem(LS_KEY[etapa]);
+  } catch {
+    /* localStorage no disponible (ej. navegación privada) */
+  }
 }
 
-export function PreanaliticaBandeja({
-  controles,
-  respActivoC1 = null,
-  respActivoC2 = null,
-}: {
-  controles: AnyRecord[];
-  respActivoC1?: string | null;
-  respActivoC2?: string | null;
-}) {
+export function PreanaliticaBandeja({ controles }: { controles: AnyRecord[] }) {
   const router = useRouter();
   const [etapa, setEtapa] = useState<Etapa>("c1");
   const [filtro, setFiltro] = useState<Filtro>("fecha");
-  // Responsable global por etapa (barra de "Quién controla"). Precarga lo que ya
-  // tienen los pendientes y, si no hay, el responsable activo persistido; al
-  // aplicar se estampa en toda la bandeja de la etapa.
-  const pendientesIni = controles.filter((c) => c.estado === "pendiente");
-  const [respC1, setRespC1] = useState<string | null>(responsableActual(pendientesIni, "c1") || respActivoC1 || null);
-  const [respC2, setRespC2] = useState<string | null>(responsableActual(pendientesIni, "c2") || respActivoC2 || null);
+  // Responsable por etapa (barra de "Quién controla"), personal de esta
+  // cuenta/navegador: arranca vacío en el render del servidor (localStorage
+  // no existe ahí) y se completa apenas monta, para no mezclar con el HTML
+  // de otra sesión.
+  const [respC1, setRespC1] = useState<string | null>(null);
+  const [respC2, setRespC2] = useState<string | null>(null);
+  useEffect(() => {
+    setRespC1(leerRespGuardado("c1"));
+    setRespC2(leerRespGuardado("c2"));
+  }, []);
   const [aplicando, setAplicando] = useState(false);
   // Dos buscadores que filtran en vivo y se COMBINAN (acumulativos): mientras
   // haya algo escrito en "cadete", el filtro de veterinaria/código solo busca
@@ -134,7 +142,12 @@ export function PreanaliticaBandeja({
   }, [filtrados, filtro]);
 
   const respActual = etapa === "c1" ? respC1 : respC2;
-  const setRespActual = etapa === "c1" ? setRespC1 : setRespC2;
+  const setRespState = etapa === "c1" ? setRespC1 : setRespC2;
+  // Guarda en localStorage (personal de esta cuenta/navegador) cada vez que
+  // se toca el selector, no solo al aplicar — así queda recordado aunque
+  // todavía no se haya tocado "Aplicar a toda la bandeja".
+  const etapaParaGuardar = etapa;
+  const setRespActual = (v: string | null) => { setRespState(v); guardarResp(etapaParaGuardar, v); };
   const countActual = etapa === "c1" ? c1Count : c2Count;
 
   async function aplicarResponsable() {
