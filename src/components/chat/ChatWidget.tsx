@@ -284,11 +284,11 @@ export function ChatWidget({ me }: { me: Perfil }) {
   // Recordatorio insistente: a pedido explícito, un solo aviso al llegar el
   // mensaje se pierde fácil entre el resto del trabajo — mientras queden
   // conversaciones sin leer, se repite vibración + sonido + notificación
-  // cada 40s hasta que se lean (se corta solo cuando noLeidosCount llega a
+  // cada 10s hasta que se lean (se corta solo cuando noLeidosCount llega a
   // 0, sea porque se leyó o porque se cerró sesión).
   useEffect(() => {
     if (noLeidosCount === 0) return;
-    const id = setInterval(() => recordarMensajesSinLeer(noLeidosCount), 40000);
+    const id = setInterval(() => recordarMensajesSinLeer(noLeidosCount), 10000);
     return () => clearInterval(id);
   }, [noLeidosCount]);
 
