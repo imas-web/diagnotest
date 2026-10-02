@@ -318,6 +318,22 @@ export function ChatApp({
     toast("success", "Conversación eliminada");
   }
 
+  async function salirDelGrupo(c: Conversacion, e: React.MouseEvent) {
+    e.stopPropagation();
+    const nombre = nombreConversacion(c, me.id);
+    if (!confirm(`¿Salir de "${nombre}"?\n\nDejás de ver los mensajes nuevos de este grupo. Si alguien te quiere volver a sumar, puede hacerlo.`)) return;
+    const res = await fetch("/api/chat/grupos/salir", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversacionId: c.id }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) { toast("error", json.error ?? "No se pudo salir del grupo"); return; }
+    setConversaciones((prev) => prev.filter((x) => x.id !== c.id));
+    if (seleccionada === c.id) setSeleccionada(null);
+    toast("success", `Saliste de "${nombre}"`);
+  }
+
   async function abrirDM(otroId: string) {
     const clave = [me.id, otroId].sort().join("|");
     const existente = conversaciones.find((c) => c.dm_clave === clave);
@@ -369,13 +385,10 @@ export function ChatApp({
     if (!res.ok || !json.conversacionId) { toast("error", json.error ?? "No se pudo crear el grupo"); return; }
 
     toast("success", json.reutilizado ? `Se sumaron al grupo "${json.nombre}" ✓` : `Grupo "${json.nombre}" creado ✓`);
-    const nuevaConv: Conversacion = {
-      id: json.conversacionId, tipo: "grupo", nombre: json.nombre, dm_clave: null, created_at: new Date().toISOString(),
-      chat_miembros: Array.from(miembrosGrupo).map((id) => ({ profile_id: id, profiles: id === me.id ? me : contactos.find((c) => c.id === id) ?? null })),
-    };
-    setConversaciones((prev) => (prev.some((c) => c.id === nuevaConv.id) ? prev : [...prev, nuevaConv]));
+    // Quien crea el grupo NO queda adentro (ver /api/chat/grupos): si después
+    // quiere escribirle, lo hace como cualquier persona de afuera, por
+    // difusión — por eso se trata como "grupo ajeno", no como propio.
     setGrupos((prev) => (prev.some((g) => g.id === json.conversacionId) ? prev : [...prev, { id: json.conversacionId, nombre: json.nombre }]));
-    setSeleccionada(json.conversacionId);
     setMostrarNuevo(false);
     setModoCrearGrupo(false);
     setNombreGrupo("");
@@ -580,7 +593,13 @@ export function ChatApp({
                 <i className="ti ti-arrow-left text-[18px]" />
               </button>
               <i className={cn("ti", iconoConversacion(conversacionActual), "text-[16px] text-g600")} />
-              <span className="text-[13px] font-semibold text-gy900">{nombreConversacion(conversacionActual, me.id)}</span>
+              <span className="text-[13px] font-semibold text-gy900 flex-1">{nombreConversacion(conversacionActual, me.id)}</span>
+              {conversacionActual.tipo === "grupo" && !gruposAjenos.has(conversacionActual.id) && (
+                <button onClick={(e) => salirDelGrupo(conversacionActual, e)} title="Salir del grupo"
+                  className="shrink-0 flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-gy500 hover:text-red-600 hover:bg-red-50 rounded-[6px]">
+                  <i className="ti ti-logout text-[13px]" /> Salir
+                </button>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2.5">

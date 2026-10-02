@@ -62,8 +62,13 @@ export async function POST(req: Request) {
 
   const nombre = (body.nombre ?? "").trim();
   if (!nombre) return NextResponse.json({ error: "Falta el nombre del grupo" }, { status: 400 });
-  const miembroIds = Array.from(new Set([...(body.miembroIds ?? []), user.id]));
-  if (miembroIds.length < 2) return NextResponse.json({ error: "Elegí al menos un integrante" }, { status: 400 });
+  // A propósito NO se suma a quien lo crea: crear el grupo es una tarea de
+  // administración, no implica querer enterarse de todo lo que se hable ahí
+  // (y de paso, de cada rama privada que arme alguien de afuera escribiéndole
+  // al grupo, que suma a TODOS sus miembros). Si después quiere escribirle,
+  // lo hace igual que cualquier persona de afuera: por difusión.
+  const miembroIds = Array.from(new Set(body.miembroIds ?? []));
+  if (miembroIds.length < 1) return NextResponse.json({ error: "Elegí al menos un integrante" }, { status: 400 });
 
   const admin = createAdminClient();
 
