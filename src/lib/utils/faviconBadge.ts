@@ -1,9 +1,30 @@
 // Badge de mensajes sin leer en el ícono de la pestaña del navegador, al
 // estilo WhatsApp Web: un círculo con el número dibujado sobre el favicon
-// (vía canvas) + el número como prefijo del título de la pestaña.
+// (vía canvas) + el número como prefijo del título de la pestaña + (si el
+// navegador lo soporta) el número en el ícono de la barra de tareas/dock,
+// para que se note aunque Chrome esté minimizado o tapado por otra ventana
+// (ej. el sistema del laboratorio en pantalla completa).
 
 let baseImgPromise: Promise<HTMLImageElement> | null = null;
 let tituloOriginal: string | null = null;
+
+// Badging API: funciona mejor si la plataforma está "instalada" como app
+// (Chrome → Instalar Diagnotest…) — ahí el número aparece sobre el ícono
+// propio en la barra de tareas/dock, no sobre el de Chrome en general. En
+// una pestaña normal, varios Chromium igual lo muestran sobre el ícono de
+// Chrome. No soportado en todos los navegadores: se ignora en silencio.
+function actualizarBadgeApp(count: number) {
+  try {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (n?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    if (count > 0) nav.setAppBadge?.(count)?.catch(() => {});
+    else nav.clearAppBadge?.()?.catch(() => {});
+  } catch {
+    /* Badging API no soportada */
+  }
+}
 
 function cargarFaviconBase(): Promise<HTMLImageElement> {
   if (!baseImgPromise) {
@@ -18,6 +39,7 @@ function cargarFaviconBase(): Promise<HTMLImageElement> {
 }
 
 export async function actualizarBadgeFavicon(count: number) {
+  actualizarBadgeApp(count);
   try {
     const img = await cargarFaviconBase();
     const size = 32;
