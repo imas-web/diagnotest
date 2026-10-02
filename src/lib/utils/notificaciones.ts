@@ -107,3 +107,22 @@ export function notificarMensajeChat(remitente: string, preview: string) {
     /* sin notificación */
   }
 }
+
+// Recordatorio insistente para mensajes sin leer: a pedido explícito, un
+// solo aviso al llegar el mensaje puede pasar desapercibido, así que esto se
+// repite cada cierto tiempo (ver ChatWidget) mientras sigan sin leerse —
+// mismo "tag" fijo que notificarMensajeChat para que no se apilen avisos.
+export function recordarMensajesSinLeer(count: number) {
+  vibrar();
+  sonar();
+  try {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    new Notification("Chat interno — mensajes sin leer", {
+      body: `Tenés ${count} conversación${count === 1 ? "" : "es"} sin leer`,
+      icon: "/icons/icon-192.png",
+      tag: "chat-mensaje",
+    });
+  } catch {
+    /* sin notificación */
+  }
+}

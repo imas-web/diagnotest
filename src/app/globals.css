@@ -5,6 +5,13 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
 @import url('https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css');
 
+html {
+  /* Refuerza el <meta name="color-scheme"> del layout: evita que Chrome en
+     Android "auto-oscurezca" el sitio y repinte botones de color sólido
+     (quedaban casi blancos/invisibles en el celular). */
+  color-scheme: light;
+}
+
 html, body {
   height: 100%;
   font-family: 'DM Sans', sans-serif;

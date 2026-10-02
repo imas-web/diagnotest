@@ -72,6 +72,7 @@ export function ChatApp({
   // (hay más de un perfil con ese rol en el roster) — ver /api/chat/grupos.
   const puedeCrearGrupos = me.rol === "super_admin" || me.email?.toLowerCase() === "imas@diagnotest.com.ar";
 
+  const fileInputCamara = useRef<HTMLInputElement>(null);
   const fileInputFoto = useRef<HTMLInputElement>(null);
   const fileInputDoc = useRef<HTMLInputElement>(null);
   const mensajesEndRef = useRef<HTMLDivElement>(null);
@@ -452,6 +453,7 @@ export function ChatApp({
     if (upErr) {
       toast("error", "No se pudo subir el archivo");
       setSubiendoArchivo(false);
+      if (fileInputCamara.current) fileInputCamara.current.value = "";
       if (fileInputFoto.current) fileInputFoto.current.value = "";
       if (fileInputDoc.current) fileInputDoc.current.value = "";
       return;
@@ -467,6 +469,7 @@ export function ChatApp({
       .from("chat_mensajes")
       .insert({ id, conversacion_id: destino, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name });
     setSubiendoArchivo(false);
+    if (fileInputCamara.current) fileInputCamara.current.value = "";
     if (fileInputFoto.current) fileInputFoto.current.value = "";
     if (fileInputDoc.current) fileInputDoc.current.value = "";
     if (error) { toast("error", error.message || "No se pudo enviar el adjunto"); return; }
@@ -619,6 +622,8 @@ export function ChatApp({
 
             {puedeEscribir ? (
               <div className="shrink-0 bg-white border-t border-gy200 p-3 flex items-end gap-2">
+                <input ref={fileInputCamara} type="file" accept="image/*" capture="environment" className="hidden"
+                  onChange={(e) => { adjuntarArchivo(e.target.files); setMostrarAdjuntoMenu(false); }} />
                 <input ref={fileInputFoto} type="file" accept="image/*" className="hidden"
                   onChange={(e) => { adjuntarArchivo(e.target.files); setMostrarAdjuntoMenu(false); }} />
                 <input ref={fileInputDoc} type="file" className="hidden"
@@ -627,10 +632,14 @@ export function ChatApp({
                   {mostrarAdjuntoMenu && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setMostrarAdjuntoMenu(false)} />
-                      <div className="absolute bottom-full left-0 mb-2 z-20 bg-white border-2 border-gy200 rounded-[8px] shadow-lg overflow-hidden min-w-[150px]">
-                        <button type="button" onClick={() => fileInputFoto.current?.click()}
+                      <div className="absolute bottom-full left-0 mb-2 z-20 bg-white border-2 border-gy200 rounded-[8px] shadow-lg overflow-hidden min-w-[170px]">
+                        <button type="button" onClick={() => fileInputCamara.current?.click()}
                           className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-gy700 hover:bg-gy50 text-left">
-                          <i className="ti ti-photo text-[15px] text-gy400" /> Foto
+                          <i className="ti ti-camera text-[15px] text-gy400" /> Tomar foto
+                        </button>
+                        <button type="button" onClick={() => fileInputFoto.current?.click()}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-gy700 hover:bg-gy50 text-left border-t border-gy100">
+                          <i className="ti ti-photo text-[15px] text-gy400" /> Elegir foto
                         </button>
                         <button type="button" onClick={() => fileInputDoc.current?.click()}
                           className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-gy700 hover:bg-gy50 text-left border-t border-gy100">

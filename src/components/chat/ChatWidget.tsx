@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
-import { notificarMensajeChat, pedirPermisoNotificaciones, estadoNotificaciones } from "@/lib/utils/notificaciones";
+import { notificarMensajeChat, pedirPermisoNotificaciones, estadoNotificaciones, recordarMensajesSinLeer } from "@/lib/utils/notificaciones";
 import { actualizarBadgeFavicon } from "@/lib/utils/faviconBadge";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
@@ -45,6 +45,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const [mostrarAdjuntoMenu, setMostrarAdjuntoMenu] = useState(false);
 
   const mensajesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputCamara = useRef<HTMLInputElement>(null);
   const fileInputFoto = useRef<HTMLInputElement>(null);
   const fileInputDoc = useRef<HTMLInputElement>(null);
   const avisoNotifBloqueadas = useRef(false);
@@ -280,6 +281,17 @@ export function ChatWidget({ me }: { me: Perfil }) {
     actualizarBadgeFavicon(noLeidosCount);
   }, [noLeidosCount]);
 
+  // Recordatorio insistente: a pedido explícito, un solo aviso al llegar el
+  // mensaje se pierde fácil entre el resto del trabajo — mientras queden
+  // conversaciones sin leer, se repite vibración + sonido + notificación
+  // cada 40s hasta que se lean (se corta solo cuando noLeidosCount llega a
+  // 0, sea porque se leyó o porque se cerró sesión).
+  useEffect(() => {
+    if (noLeidosCount === 0) return;
+    const id = setInterval(() => recordarMensajesSinLeer(noLeidosCount), 40000);
+    return () => clearInterval(id);
+  }, [noLeidosCount]);
+
   const conversacionActual = conversaciones.find((c) => c.id === seleccionada) ?? null;
   const puedeEscribir =
     conversacionActual?.tipo !== "general" || me.rol === "dueno" || me.rol === "super_admin";
@@ -412,6 +424,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
     if (upErr) {
       toast("error", "No se pudo subir el archivo");
       setSubiendoArchivo(false);
+      if (fileInputCamara.current) fileInputCamara.current.value = "";
       if (fileInputFoto.current) fileInputFoto.current.value = "";
       if (fileInputDoc.current) fileInputDoc.current.value = "";
       return;
@@ -427,6 +440,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
       .from("chat_mensajes")
       .insert({ id, conversacion_id: destino, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name });
     setSubiendoArchivo(false);
+    if (fileInputCamara.current) fileInputCamara.current.value = "";
     if (fileInputFoto.current) fileInputFoto.current.value = "";
     if (fileInputDoc.current) fileInputDoc.current.value = "";
     if (error) { toast("error", error.message || "No se pudo enviar el adjunto"); return; }
@@ -604,6 +618,8 @@ export function ChatWidget({ me }: { me: Perfil }) {
               </div>
               {puedeEscribir ? (
                 <div className="shrink-0 bg-white border-t border-gy200 p-2 flex items-end gap-1.5">
+                  <input ref={fileInputCamara} type="file" accept="image/*" capture="environment" className="hidden"
+                    onChange={(e) => { adjuntarArchivo(e.target.files); setMostrarAdjuntoMenu(false); }} />
                   <input ref={fileInputFoto} type="file" accept="image/*" className="hidden"
                     onChange={(e) => { adjuntarArchivo(e.target.files); setMostrarAdjuntoMenu(false); }} />
                   <input ref={fileInputDoc} type="file" className="hidden"
@@ -612,10 +628,14 @@ export function ChatWidget({ me }: { me: Perfil }) {
                     {mostrarAdjuntoMenu && (
                       <>
                         <div className="fixed inset-0 z-10" onClick={() => setMostrarAdjuntoMenu(false)} />
-                        <div className="absolute bottom-full left-0 mb-2 z-20 bg-white border-2 border-gy200 rounded-[8px] shadow-lg overflow-hidden min-w-[140px]">
-                          <button type="button" onClick={() => fileInputFoto.current?.click()}
+                        <div className="absolute bottom-full left-0 mb-2 z-20 bg-white border-2 border-gy200 rounded-[8px] shadow-lg overflow-hidden min-w-[150px]">
+                          <button type="button" onClick={() => fileInputCamara.current?.click()}
                             className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-gy700 hover:bg-gy50 text-left">
-                            <i className="ti ti-photo text-[14px] text-gy400" /> Foto
+                            <i className="ti ti-camera text-[14px] text-gy400" /> Tomar foto
+                          </button>
+                          <button type="button" onClick={() => fileInputFoto.current?.click()}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-gy700 hover:bg-gy50 text-left border-t border-gy100">
+                            <i className="ti ti-photo text-[14px] text-gy400" /> Elegir foto
                           </button>
                           <button type="button" onClick={() => fileInputDoc.current?.click()}
                             className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-gy700 hover:bg-gy50 text-left border-t border-gy100">
