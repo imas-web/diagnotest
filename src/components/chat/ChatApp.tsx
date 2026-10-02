@@ -168,6 +168,35 @@ export function ChatApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seleccionada, supabase]);
 
+  // Si el celular se bloquea, se cambia de app o la compu se suspende, el
+  // socket de Realtime se corta — y los mensajes que llegaron mientras
+  // tanto no se reciben ni se van a recibir después (no es una cola, es
+  // broadcast en vivo). Sin esto, quedaban "perdidos" hasta refrescar la
+  // página. Al volver a primer plano (o recuperar conexión) se repide todo
+  // de cero: la lista de conversaciones y, si hay una charla abierta, sus
+  // mensajes — así nunca hace falta un refresh manual.
+  useEffect(() => {
+    function resincronizar() {
+      if (document.visibilityState === "hidden") return;
+      router.refresh();
+      const sel = seleccionadaRef.current;
+      if (!sel) return;
+      fetch(`/api/chat/mensajes?conversacion_id=${sel}`)
+        .then((r) => r.json())
+        .then((json) => { if (!json.error) setMensajes((json.mensajes ?? []) as Mensaje[]); });
+      marcarLeido(sel);
+    }
+    document.addEventListener("visibilitychange", resincronizar);
+    window.addEventListener("focus", resincronizar);
+    window.addEventListener("online", resincronizar);
+    return () => {
+      document.removeEventListener("visibilitychange", resincronizar);
+      window.removeEventListener("focus", resincronizar);
+      window.removeEventListener("online", resincronizar);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Avisa cuando llega una conversación nueva (alguien inició un DM conmigo,
   // o me sumaron a un grupo): refresca la lista completa desde el server.
   useEffect(() => {
