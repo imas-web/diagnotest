@@ -142,7 +142,14 @@ export function ChatWidget({ me }: { me: Perfil }) {
         (payload) => {
           const cruda = payload.new as Mensaje;
           if (cruda.remitente_id === me.id) return;
-          if (!conversacionesRef.current.some((c) => c.id === cruda.conversacion_id)) return;
+          const conv = conversacionesRef.current.find((c) => c.id === cruda.conversacion_id);
+          if (!conv) return;
+          // Un grupo ajeno (al que no pertenezco, abierto solo para mandarle
+          // un mensaje de difusión) queda en mi lista local con chat_miembros
+          // vacío — sin esto, cualquier mensaje de ESE grupo me aparecía como
+          // pendiente/sonaba la notificación aunque no sea miembro real.
+          const esMiembroReal = conv.tipo === "general" || conv.chat_miembros.some((m) => m.profile_id === me.id);
+          if (!esMiembroReal) return;
 
           setUltimos((prev) => [
             { conversacion_id: cruda.conversacion_id, contenido: cruda.contenido, adjunto_tipo: cruda.adjunto_tipo, remitente_id: cruda.remitente_id, created_at: cruda.created_at },
