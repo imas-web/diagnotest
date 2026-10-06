@@ -7,6 +7,7 @@ import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import { notificarMensajeChat, pedirPermisoNotificaciones, estadoNotificaciones } from "@/lib/utils/notificaciones";
+import { ImageLightbox } from "@/components/chat/ImageLightbox";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
   remitenteDe, nombreConversacion, iconoConversacion, tieneNoLeidos,
@@ -62,6 +63,9 @@ export function ChatApp({
   // Menú "Foto / Documento" que se abre al tocar el clip, en vez de ir
   // directo al selector de archivos.
   const [mostrarAdjuntoMenu, setMostrarAdjuntoMenu] = useState(false);
+  // Foto del chat en grande (zoom/rotar) al clickearla, en vez de tener que
+  // hacer click derecho → abrir en pestaña nueva para verla mejor.
+  const [lightbox, setLightbox] = useState<string | null>(null);
   // Alta de grupos nuevos (reservado a dueño/super_admin) dentro del mismo
   // modal de "Nuevo mensaje", ver crearGrupo().
   const [modoCrearGrupo, setModoCrearGrupo] = useState(false);
@@ -626,7 +630,9 @@ export function ChatApp({
                         )}
                         {m.adjunto_url && m.adjunto_tipo === "imagen" && (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={m.adjunto_url} alt={m.adjunto_nombre ?? "Adjunto"} className="rounded-[8px] max-w-full mb-1" />
+                          <img src={m.adjunto_url} alt={m.adjunto_nombre ?? "Adjunto"}
+                            onClick={() => setLightbox(m.adjunto_url)}
+                            className="rounded-[8px] max-w-full mb-1 cursor-zoom-in hover:brightness-95" />
                         )}
                         {m.adjunto_url && m.adjunto_tipo !== "imagen" && (
                           <a href={m.adjunto_url} target="_blank" rel="noopener noreferrer"
@@ -839,6 +845,8 @@ export function ChatApp({
           </div>
         </div>
       )}
+
+      {lightbox && <ImageLightbox src={lightbox} alt="Adjunto" onClose={() => setLightbox(null)} />}
     </div>
   );
 }
