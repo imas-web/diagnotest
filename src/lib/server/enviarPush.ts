@@ -27,7 +27,7 @@ export async function enviarPushConversacion(params: {
   titulo: string;
   cuerpo: string;
 }) {
-  if (!asegurarVapid()) return;
+  if (!asegurarVapid()) { console.warn("[push] VAPID no configurado, se omite el envío"); return; }
   const admin = createAdminClient();
 
   let destinatarios: string[] = [];
@@ -42,15 +42,18 @@ export async function enviarPushConversacion(params: {
       .eq("conversacion_id", params.conversacionId).neq("profile_id", params.remitenteId);
     destinatarios = (data ?? []).map((m) => m.profile_id);
   }
+  console.log("[push] destinatarios reales:", destinatarios.length, params.conversacionId);
   if (!destinatarios.length) return;
 
   const { data: subs } = await admin
     .from("push_subscriptions").select("id, endpoint, p256dh, auth")
     .in("profile_id", destinatarios);
+  console.log("[push] suscripciones encontradas:", subs?.length ?? 0);
   if (!subs?.length) return;
 
   const payload = JSON.stringify({ title: params.titulo, body: params.cuerpo, url: "/chat", tag: "chat-mensaje" });
   const idsParaBorrar: string[] = [];
+  let enviados = 0;
 
   await Promise.all(subs.map(async (s) => {
     try {
@@ -58,13 +61,16 @@ export async function enviarPushConversacion(params: {
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
         payload
       );
+      enviados++;
     } catch (err) {
       // 404/410 = el navegador dio de baja esa suscripción (cambió de
       // perfil, desinstaló, etc.) — se limpia para no reintentar siempre.
       const status = (err as { statusCode?: number })?.statusCode;
+      console.error("[push] sendNotification falló", status, (err as Error)?.message);
       if (status === 404 || status === 410) idsParaBorrar.push(s.id);
     }
   }));
+  console.log(`[push] enviados OK: ${enviados}/${subs.length}`);
 
   if (idsParaBorrar.length) {
     await admin.from("push_subscriptions").delete().in("id", idsParaBorrar);

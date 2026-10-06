@@ -54,6 +54,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const fileInputFoto = useRef<HTMLInputElement>(null);
   const fileInputDoc = useRef<HTMLInputElement>(null);
   const avisoNotifBloqueadas = useRef(false);
+  const avisoPushMostrado = useRef(false);
 
   async function pedirNotificacionesConAviso() {
     const estado = await pedirPermisoNotificaciones();
@@ -61,7 +62,17 @@ export function ChatWidget({ me }: { me: Perfil }) {
       avisoNotifBloqueadas.current = true;
       toast("error", "Las notificaciones están bloqueadas para este sitio. Tocá el candado/ícono junto a la URL → Notificaciones → Permitir, y recargá la página.");
     }
-    if (estado === "granted") suscribirPush();
+    if (estado === "granted") suscribirPushConAviso();
+  }
+
+  // Mientras se termina de afinar el push real, avisa el resultado en vez de
+  // fallar en silencio — así se puede diagnosticar sin abrir la consola.
+  async function suscribirPushConAviso() {
+    const resultado = await suscribirPush();
+    if (resultado === "ok" || avisoPushMostrado.current) return;
+    avisoPushMostrado.current = true;
+    if (resultado === "error") toast("error", "No se pudo activar la notificación push real (quedó el aviso sonoro como respaldo). Avisale a Ignacio.");
+    else if (resultado === "sin-soporte") toast("warning", "Este navegador no soporta notificaciones push reales — queda el aviso sonoro mientras la pestaña esté abierta.");
   }
 
   // Refs para leer el estado más reciente desde el listener global de
@@ -116,7 +127,7 @@ export function ChatWidget({ me }: { me: Perfil }) {
       avisoNotifBloqueadas.current = true;
       toast("error", "Las notificaciones están bloqueadas para este sitio. Tocá el candado/ícono junto a la URL → Notificaciones → Permitir, y recargá la página.");
     }
-    if (estado === "granted") suscribirPush();
+    if (estado === "granted") suscribirPushConAviso();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

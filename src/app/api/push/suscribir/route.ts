@@ -20,7 +20,11 @@ export async function POST(req: Request) {
   const { error } = await admin
     .from("push_subscriptions")
     .upsert({ profile_id: user.id, endpoint, p256dh, auth }, { onConflict: "endpoint" });
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    console.error("[push/suscribir] upsert falló", user.id, error.message);
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
 
+  console.log("[push/suscribir] OK", user.id, endpoint.slice(0, 60));
   return NextResponse.json({ ok: true });
 }
