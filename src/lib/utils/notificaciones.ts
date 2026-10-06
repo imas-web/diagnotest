@@ -69,24 +69,46 @@ function sonar() {
   }
 }
 
-// Notificación del sistema (si el usuario dio permiso).
-function notificacionSistema() {
+// Dispara la notificación del sistema. Con el service worker activo (esta
+// plataforma es una PWA, siempre registra uno — ver next.config), Chrome
+// puede rechazar el constructor "new Notification(...)" directo con
+// "Illegal constructor. Use ServiceWorkerRegistration.showNotification()
+// instead." — y como antes eso se atrapaba en un catch silencioso, quedaba
+// sin sonar NADA (ni popup) sin ningún aviso de error, aunque el permiso
+// estuviera bien concedido. Por eso acá se intenta primero por el service
+// worker (funciona sea cual sea el estado de la página) y solo se cae al
+// constructor directo si no hay service worker disponible.
+async function mostrarNotificacion(titulo: string, opciones: NotificationOptions) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   try {
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    new Notification("Nuevo pedido de retiro", {
-      body: "El jefe te asignó un pedido. Tocá para verlo.",
-      icon: "/icons/icon-192.png",
-      tag: "pedido-nuevo",
-    });
+    if ("serviceWorker" in navigator) {
+      // "ready" no resuelve nunca si por lo que sea el service worker no
+      // llegó a activarse — con el timeout, en el peor caso se cae al
+      // constructor directo en vez de quedarse esperando para siempre.
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+      ]);
+      if (reg) { await reg.showNotification(titulo, opciones); return; }
+    }
   } catch {
-    /* sin notificación */
+    /* sigue abajo con el fallback */
+  }
+  try {
+    new Notification(titulo, opciones);
+  } catch {
+    /* ningún camino funcionó (navegador sin soporte, etc.) */
   }
 }
 
 export function notificarNuevoPedido() {
   vibrar();
   sonar();
-  notificacionSistema();
+  mostrarNotificacion("Nuevo pedido de retiro", {
+    body: "El jefe te asignó un pedido. Tocá para verlo.",
+    icon: "/icons/icon-192.png",
+    tag: "pedido-nuevo",
+  });
 }
 
 // Aviso de mensaje nuevo en el chat interno — mismo mecanismo (vibrar +
@@ -96,16 +118,11 @@ export function notificarNuevoPedido() {
 export function notificarMensajeChat(remitente: string, preview: string) {
   vibrar();
   sonar();
-  try {
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    new Notification(remitente, {
-      body: preview,
-      icon: "/icons/icon-192.png",
-      tag: "chat-mensaje",
-    });
-  } catch {
-    /* sin notificación */
-  }
+  mostrarNotificacion(remitente, {
+    body: preview,
+    icon: "/icons/icon-192.png",
+    tag: "chat-mensaje",
+  });
 }
 
 // Recordatorio insistente para mensajes sin leer: a pedido explícito, un
@@ -115,14 +132,9 @@ export function notificarMensajeChat(remitente: string, preview: string) {
 export function recordarMensajesSinLeer(count: number) {
   vibrar();
   sonar();
-  try {
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    new Notification("Chat interno — mensajes sin leer", {
-      body: `Tenés ${count} conversación${count === 1 ? "" : "es"} sin leer`,
-      icon: "/icons/icon-192.png",
-      tag: "chat-mensaje",
-    });
-  } catch {
-    /* sin notificación */
-  }
+  mostrarNotificacion("Chat interno — mensajes sin leer", {
+    body: `Tenés ${count} conversación${count === 1 ? "" : "es"} sin leer`,
+    icon: "/icons/icon-192.png",
+    tag: "chat-mensaje",
+  });
 }
