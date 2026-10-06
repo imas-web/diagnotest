@@ -3,12 +3,15 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidarPreanalitica } from "@/lib/preanalitica/revalidar";
 
-// Aplica un responsable a TODOS los registros que siguen en la bandeja de una
-// etapa (Control 1 o Control 2), de una sola vez. Pensado para que preanalítica
-// no tenga que cargar quién controló registro por registro: setean los nombres
-// una vez y se estampan en todo lo pendiente de esa etapa. Si después cambian
-// los nombres y vuelven a aplicar, se re-estampa lo que sigue pendiente (lo ya
-// controlado, que salió de la bandeja, queda con su responsable original).
+// Aplica un responsable a los registros de la bandeja de una etapa (Control 1
+// o Control 2) que TODAVÍA no tengan a nadie marcado — pensado para que
+// preanalítica no tenga que cargar quién controló registro por registro: se
+// setea el nombre una vez y se estampa en lo pendiente sin responsable. A
+// propósito NO pisa lo que ya tiene cargado: con varias personas de
+// preanalítica trabajando la misma bandeja a la vez, si Pre 1 ya marcó a
+// Soledad en sus registros, que Pre 2 aplique a Ailen no debe taparle eso —
+// cada aplicación solo completa lo que seguía en blanco. Para corregir un
+// registro puntual ya marcado, se edita desde su propia ficha.
 const ROLES_PERMITIDOS = ["preanalitica", "super_admin"];
 
 async function requireRol() {
@@ -34,16 +37,19 @@ export async function POST(req: Request) {
   if (stage !== "c1" && stage !== "c2") return NextResponse.json({ error: "Etapa inválida" }, { status: 400 });
 
   const admin = createAdminClient();
+  const col = stage === "c1" ? "responsable_1" : "responsable_2";
 
   // Controles que siguen en la bandeja de esa etapa: pendientes, de retiros no
   // anulados ni duplicados. Etapa C1 = todavía sin Control 1 OK; C2 = Control 1
-  // ya OK, esperando el segundo.
+  // ya OK, esperando el segundo. + sin nadie marcado todavía en esa columna,
+  // para no pisar lo que ya haya cargado otra persona de preanalítica.
   let sel = admin
     .from("control_preanalitica")
     .select("id, retiro:retiro_id!inner(anulado, estado)")
     .eq("estado", "pendiente")
     .eq("retiro.anulado", false)
-    .neq("retiro.estado", "duplicado_sospechoso");
+    .neq("retiro.estado", "duplicado_sospechoso")
+    .is(col, null);
   sel = stage === "c1" ? sel.is("control_1", null) : sel.eq("control_1", "ok");
 
   const { data: filas, error: selErr } = await sel;
@@ -52,7 +58,6 @@ export async function POST(req: Request) {
   const ids = (filas ?? []).map((f) => f.id);
   if (!ids.length) return NextResponse.json({ ok: true, actualizados: 0 });
 
-  const col = stage === "c1" ? "responsable_1" : "responsable_2";
   const { error: updErr } = await admin
     .from("control_preanalitica")
     .update({ [col]: responsable })

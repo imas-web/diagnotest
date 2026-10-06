@@ -164,7 +164,10 @@ export function PreanaliticaBandeja({ controles, usuarioId }: { controles: AnyRe
     const json = await res.json().catch(() => ({}));
     setAplicando(false);
     if (!res.ok) { toast("error", json.error ?? "No se pudo aplicar"); return; }
-    toast("success", `Responsable aplicado a ${json.actualizados ?? 0} registro(s) ✓`);
+    const n = json.actualizados ?? 0;
+    toast(n > 0 ? "success" : "warning", n > 0
+      ? `Completado en ${n} registro(s) que no tenían a nadie marcado ✓`
+      : "Ningún registro pendiente sin marcar — no había nada para completar");
     router.refresh();
   }
 
@@ -190,16 +193,18 @@ export function PreanaliticaBandeja({ controles, usuarioId }: { controles: AnyRe
         </button>
       </div>
 
-      {/* Responsable global de la etapa: se marca una vez y se aplica a TODA la
-          bandeja de Control 1 (o 2). Si cambian las personas y vuelven a aplicar,
-          se re-estampa lo que sigue pendiente; lo ya controlado no se toca. */}
+      {/* Responsable de la etapa: se marca una vez y se completa en lo
+          pendiente de Control 1 (o 2) que TODAVÍA no tenga a nadie marcado —
+          no pisa lo que ya cargó otra persona de preanalítica trabajando la
+          misma bandeja. Para corregir un registro puntual, se edita desde su
+          propia ficha. */}
       <div className="bg-g50/60 border border-g700/20 rounded-[12px] p-3.5 space-y-2.5">
         <div className="flex items-center gap-2">
           <i className="ti ti-users text-g700 text-[15px]" />
           <span className="text-[13px] font-semibold text-g800">
             ¿Quién controla en {etapa === "c1" ? "Control 1" : "Control 2"}?
           </span>
-          <span className="text-[11px] text-gy500">se aplica a los {countActual} registros de la bandeja</span>
+          <span className="text-[11px] text-gy500">completa los que todavía no tienen a nadie marcado (sin pisar lo ya cargado por otra persona)</span>
         </div>
         <ResponsableSelector value={respActual} onChange={setRespActual} />
         <button type="button" onClick={aplicarResponsable} disabled={aplicando || countActual === 0}
@@ -207,7 +212,7 @@ export function PreanaliticaBandeja({ controles, usuarioId }: { controles: AnyRe
           {aplicando
             ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
             : <i className="ti ti-users-group text-[14px]" />}
-          Aplicar a toda la bandeja ({etapa === "c1" ? "Control 1" : "Control 2"})
+          Completar en la bandeja ({etapa === "c1" ? "Control 1" : "Control 2"})
         </button>
       </div>
 
