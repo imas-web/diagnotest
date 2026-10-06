@@ -7,6 +7,7 @@ import { cn, initials } from "@/lib/utils/format";
 import { formatTime } from "@/lib/utils/dates";
 import { toast } from "@/components/ui/ToastNotification";
 import { notificarMensajeChat, pedirPermisoNotificaciones, estadoNotificaciones } from "@/lib/utils/notificaciones";
+import { suscribirPush } from "@/lib/utils/push";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
 import {
   type Perfil, type Conversacion, type Mensaje, type UltimoMensaje, type Grupo,
@@ -34,10 +35,15 @@ export function ChatApp({
     // Solo lee el estado (no pide permiso: eso necesita un click) — para
     // avisar de entrada si ya estaba bloqueado de antes, sin esperar a que
     // alguien abra una conversación para enterarse.
-    if (estadoNotificaciones() === "denied") {
+    const estado = estadoNotificaciones();
+    if (estado === "denied") {
       avisoNotifBloqueadas.current = true;
       toast("error", "Las notificaciones están bloqueadas para este sitio. Tocá el candado/ícono junto a la URL → Notificaciones → Permitir, y recargá la página.");
     }
+    // Si ya estaba concedido de antes (de una visita previa), suscribe al
+    // push real sin esperar a que alguien abra una conversación — ya no hace
+    // falta gesto nuevo porque el permiso ya existe.
+    if (estado === "granted") suscribirPush();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -88,6 +94,7 @@ export function ChatApp({
       avisoNotifBloqueadas.current = true;
       toast("error", "Las notificaciones están bloqueadas para este sitio. Tocá el candado/ícono junto a la URL → Notificaciones → Permitir, y recargá la página.");
     }
+    if (estado === "granted") suscribirPush();
   }
 
   // Refs para leer el estado más reciente desde el listener global de
@@ -441,22 +448,23 @@ export function ChatApp({
     setEnviando(true);
     const destino = await resolverDestino();
     if (!destino) { setEnviando(false); return; }
-    // El id se genera acá y se manda explícito en el insert (sin encadenar
-    // .select()): pedirle a Postgres que devuelva la fila recién insertada
-    // (Prefer: return=representation) obliga a repasar la política de
-    // SELECT sobre esa fila en la misma vuelta — mismo problema de orden
-    // que tuvo la creación de un DM. Al no pedir nada de vuelta, el insert
-    // sólo depende del WITH CHECK y no hace falta releer nada.
+    // Se manda por la API (no insert directo del navegador): así, además de
+    // guardar el mensaje, el servidor puede disparar el push real a los
+    // destinatarios (ver /api/chat/mensajes/enviar) sin depender de que la
+    // pestaña de ELLOS esté despierta para avisarles.
     const id = crypto.randomUUID();
     const nuevo: Mensaje = {
       id, conversacion_id: destino, remitente_id: me.id, contenido,
       adjunto_url: null, adjunto_tipo: null, adjunto_nombre: null, created_at: new Date().toISOString(), remitente: me,
     };
-    const { error } = await supabase
-      .from("chat_mensajes")
-      .insert({ id, conversacion_id: destino, remitente_id: me.id, contenido });
+    const res = await fetch("/api/chat/mensajes/enviar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, conversacionId: destino, contenido }),
+    });
+    const json = await res.json().catch(() => ({}));
     setEnviando(false);
-    if (error) { toast("error", error.message || "No se pudo enviar el mensaje"); return; }
+    if (!res.ok) { toast("error", json.error || "No se pudo enviar el mensaje"); return; }
     setTexto("");
     // Dedupe por id evita que se duplique si el propio evento realtime
     // también llega.
@@ -489,14 +497,17 @@ export function ChatApp({
       id, conversacion_id: destino, remitente_id: me.id, contenido: null,
       adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name, created_at: new Date().toISOString(), remitente: me,
     };
-    const { error } = await supabase
-      .from("chat_mensajes")
-      .insert({ id, conversacion_id: destino, remitente_id: me.id, adjunto_url: url, adjunto_tipo: tipo, adjunto_nombre: file.name });
+    const res = await fetch("/api/chat/mensajes/enviar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, conversacionId: destino, adjuntoUrl: url, adjuntoTipo: tipo, adjuntoNombre: file.name }),
+    });
+    const json = await res.json().catch(() => ({}));
     setSubiendoArchivo(false);
     if (fileInputCamara.current) fileInputCamara.current.value = "";
     if (fileInputFoto.current) fileInputFoto.current.value = "";
     if (fileInputDoc.current) fileInputDoc.current.value = "";
-    if (error) { toast("error", error.message || "No se pudo enviar el adjunto"); return; }
+    if (!res.ok) { toast("error", json.error || "No se pudo enviar el adjunto"); return; }
     setMensajes((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]));
   }
 
