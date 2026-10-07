@@ -103,15 +103,40 @@ export function ControlCard({ control, tipo, etapa = "obs", usuarioId }: Props) 
       if (guardado) setResponsable2(guardado);
     }
   }, [control.responsable_2, usuarioId]);
-  // Cada vez que esta cuenta elige un responsable en una ficha, se recuerda
-  // para precargarlo en la próxima — personal por cuenta, nunca compartido.
+  // Elegir un responsable lo guarda YA (no recién al tocar "Guardar"): el
+  // efecto de arriba sincroniza esta ficha con lo que tenga el servidor en
+  // cada refresco, así que si la elección se quedara solo en memoria, el
+  // próximo refresco (automático a los 15s, o al cambiar de solapa y volver,
+  // que desmonta y remonta la ficha) la pisaba de vuelta con el valor viejo
+  // de la base. Además se recuerda en localStorage para precargarla en la
+  // próxima ficha — personal por cuenta, nunca compartido.
+  async function guardarResponsableYa(resp1: string | null, resp2: string | null) {
+    const res = await fetch("/api/preanalitica/validar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        controlId: control.id,
+        estado: "pendiente",
+        control1: control.control_1 ?? null,
+        control2: control.control_2 ?? null,
+        etiquetas,
+        detalle: detalle || null,
+        detalle2: detalle2 || null,
+        responsable1: resp1,
+        responsable2: resp2,
+      }),
+    }).catch(() => null);
+    if (!res || !res.ok) toast("error", "No se pudo guardar quién controló — probá de nuevo");
+  }
   function elegirResponsable1(v: string | null) {
     setResponsable1(v);
     if (usuarioId) guardarResp("c1", usuarioId, v);
+    guardarResponsableYa(v, responsable2);
   }
   function elegirResponsable2(v: string | null) {
     setResponsable2(v);
     if (usuarioId) guardarResp("c2", usuarioId, v);
+    guardarResponsableYa(responsable1, v);
   }
   const [saving, setSaving] = useState(false);
   const [savingEdicion, setSavingEdicion] = useState(false);
