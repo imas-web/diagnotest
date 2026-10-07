@@ -27,6 +27,7 @@ const ROLES: { value: string; label: string }[] = [
   { value: "preanalitica", label: "Preanalítica" },
   { value: "cobranzas", label: "Cobranzas" },
   { value: "carga", label: "Carga" },
+  { value: "stock", label: "Stock" },
   { value: "dueno", label: "Dueño" },
   { value: "super_admin", label: "Super Admin" },
   { value: "chat", label: "Solo chat" },

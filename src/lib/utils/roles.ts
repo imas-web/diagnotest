@@ -24,6 +24,8 @@ export function landingPathForRole(rol: string | null | undefined): string {
       return "/dashboard";
     case "chat":
       return "/chat";
+    case "stock":
+      return "/stock";
     default:
       return "/login";
   }

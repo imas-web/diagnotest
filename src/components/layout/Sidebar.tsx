@@ -63,6 +63,7 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/caja", label: "Control de caja", icon: "ti-cash-register" },
         { href: "/retiros", label: "Todos los retiros", icon: "ti-table" },
         { href: "/gastos/autorizar", label: "Gastos", icon: "ti-cash" },
+        { href: "/stock", label: "Stock", icon: "ti-boxes" },
         { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "super_admin":
@@ -76,6 +77,7 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/admin/personal", label: "Personal", icon: "ti-users" },
         { href: "/admin/veterinarias", label: "Veterinarias", icon: "ti-building-hospital" },
         { href: "/admin/zonas", label: "Zonas", icon: "ti-map" },
+        { href: "/stock", label: "Stock", icon: "ti-boxes" },
         { href: "/gastos/autorizar", label: "Gastos", icon: "ti-cash", badgeClass: "purple" },
         { href: "/cancelados", label: "Cancelados / Anulados", icon: "ti-ban", badgeClass: "default" },
         { href: "/admin/auditoria", label: "Auditoría", icon: "ti-history" },
@@ -85,6 +87,11 @@ function getNavItems(rol: string): NavItem[] {
     case "chat":
       return [
         { href: "/muestras-dia", label: "Muestras por día", icon: "ti-microscope" },
+        { href: "/chat", label: "Chat", icon: "ti-message-circle" },
+      ];
+    case "stock":
+      return [
+        { href: "/stock", label: "Stock", icon: "ti-boxes" },
         { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     default:

@@ -78,6 +78,7 @@ export function RoleBadge({ rol }: { rol: string }) {
     preanalitica: { label: "Preanalítica", cls: "bg-amber-bg text-amber-text" },
     cobranzas: { label: "Cobranzas", cls: "bg-gy100 text-gy600" },
     carga: { label: "Carga", cls: "bg-blue-50 text-blue-700" },
+    stock: { label: "Stock", cls: "bg-amber-bg text-amber-text" },
     dueno: { label: "Dueño", cls: "bg-g50 text-g700" },
     super_admin: { label: "Super Admin", cls: "bg-red-50 text-red-700" },
     chat: { label: "Solo chat", cls: "bg-gy100 text-gy500" },

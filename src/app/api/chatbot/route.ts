@@ -8,7 +8,7 @@ import { dateISOInBA } from "@/lib/utils/dates";
 const ROLES_SIN_ACCESO = ["personal_logistica"];
 const MAX_HISTORIAL = 12;
 
-const SYSTEM_PROMPT = `Sos el asistente de consultas de Diagnotest, un laboratorio veterinario. Respondés preguntas sobre la operación (retiros, controles de preanalítica, cobranzas, pedidos, gastos) usando las herramientas disponibles para consultar la base de datos.
+const SYSTEM_PROMPT = `Sos el asistente de consultas de Diagnotest, un laboratorio veterinario. Respondés preguntas sobre la operación (retiros, controles de preanalítica, cobranzas, pedidos, gastos, stock de insumos) usando las herramientas disponibles para consultar la base de datos.
 
 Reglas:
 - Hoy es ${dateISOInBA()} (zona horaria de Buenos Aires). Interpretá "hoy", "ayer", "esta semana" en base a esa fecha.

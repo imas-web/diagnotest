@@ -338,6 +338,40 @@ export function buildChatbotTools(supabase: SupabaseClient) {
     },
   });
 
+  const buscarStock = betaZodTool({
+    name: "buscar_stock",
+    description:
+      "Busca artículos del módulo de Stock (insumos de laboratorio de Interpracsys): stock según el sistema, stock mínimo, y stock real contado a mano en el depósito (si ya se cargó). Sirve para preguntas como qué está en o por debajo del mínimo, o dónde hay diferencia entre el sistema y el conteo real.",
+    inputSchema: z.object({
+      texto: z.string().optional().describe("Busca por código, nombre o categoría"),
+      solo_en_minimo: z.boolean().optional().describe("Si es true, solo artículos con stock_sistema <= stock_minimo"),
+      solo_con_diferencia: z.boolean().optional().describe("Si es true, solo artículos donde el conteo real no coincide con el stock del sistema"),
+      limite: z.number().int().optional(),
+    }),
+    run: async (input) => {
+      let query = supabase
+        .from("stock_articulos")
+        .select("codigo, nombre, categoria, almacen, stock_sistema, stock_minimo, stock_real, stock_sistema_actualizado_at, stock_real_actualizado_at")
+        .order("stock_sistema", { ascending: true })
+        .limit(capLimite(input.limite, 40, 150));
+
+      if (input.texto) {
+        const t = term(input.texto);
+        query = query.or(`codigo.ilike.${t},nombre.ilike.${t},categoria.ilike.${t}`);
+      }
+
+      const { data, error } = await query;
+      if (error) return `Error: ${error.message}`;
+      if (!data || data.length === 0) return "No se encontraron artículos con esos filtros.";
+
+      let filas = data;
+      if (input.solo_en_minimo) filas = filas.filter((a) => a.stock_sistema <= a.stock_minimo);
+      if (input.solo_con_diferencia) filas = filas.filter((a) => a.stock_real !== null && a.stock_real !== a.stock_sistema);
+      if (!filas.length) return "No se encontraron artículos con esos filtros.";
+      return JSON.stringify(filas);
+    },
+  });
+
   return [
     buscarPersonal,
     buscarVeterinarias,
@@ -346,5 +380,6 @@ export function buildChatbotTools(supabase: SupabaseClient) {
     buscarControlCobranzas,
     buscarPedidos,
     buscarGastos,
+    buscarStock,
   ];
 }
