@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const ROLES_VALIDOS = [
   "personal_logistica", "jefe_logistica", "preanalitica", "cobranzas",
-  "carga", "dueno", "super_admin", "chat",
+  "carga", "dueno", "super_admin", "chat", "stock",
 ] as const;
 type Rol = (typeof ROLES_VALIDOS)[number];
 

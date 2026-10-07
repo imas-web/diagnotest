@@ -11,6 +11,7 @@ const ROLES_VALIDOS = [
   "dueno",
   "super_admin",
   "chat",
+  "stock",
 ] as const;
 
 type Rol = (typeof ROLES_VALIDOS)[number];
