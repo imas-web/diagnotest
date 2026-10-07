@@ -61,7 +61,7 @@ export default async function CajaPage({
         .range(from, to)
     ),
     admin.from("rendiciones_caja")
-      .select("*, personal:personal_id(nombre)")
+      .select("*, personal:personal_id(nombre), resuelta_por_nombre:resuelta_por(nombre)")
       .in("estado", ["validado", "diferencia"])
       .order("fecha_operativa", { ascending: false })
       .order("updated_at", { ascending: false })
@@ -120,6 +120,9 @@ export default async function CajaPage({
     diferencia: Number(x.diferencia ?? 0),
     estado: x.estado,
     observacion: x.observacion ?? null,
+    resuelta: !!x.resuelta,
+    resuelvePor: (x.resuelta_por_nombre as { nombre?: string } | null)?.nombre ?? null,
+    notaResolucion: x.nota_resolucion ?? null,
   }));
 
   return (

@@ -34,6 +34,9 @@ export interface RevisadoRow {
   diferencia: number;
   estado: string;
   observacion: string | null;
+  resuelta: boolean;
+  resuelvePor: string | null;
+  notaResolucion: string | null;
 }
 
 type Tab = "pendientes" | "revisado";
@@ -104,7 +107,11 @@ function RevisadoTabla({ rows }: { rows: RevisadoRow[] }) {
   const [cadete, setCadete] = useState("");
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
-  const [soloDif, setSoloDif] = useState(false);
+  // Por defecto, esta tabla arranca mostrando justo lo que hay que resolver:
+  // solo diferencias, sin las que ya se marcaron como resueltas. Un par de
+  // checks la vuelven a abrir a todo el historial (validados + resueltas).
+  const [soloDif, setSoloDif] = useState(true);
+  const [ocultarResueltas, setOcultarResueltas] = useState(true);
 
   // Cadetes únicos para el desplegable.
   const cadetes = Array.from(new Set(rows.map((r) => r.nombre))).sort((a, b) => a.localeCompare(b, "es"));
@@ -114,13 +121,14 @@ function RevisadoTabla({ rows }: { rows: RevisadoRow[] }) {
     if (desde && r.fecha < desde) return false;
     if (hasta && r.fecha > hasta) return false;
     if (soloDif && r.estado !== "diferencia") return false;
+    if (ocultarResueltas && r.estado === "diferencia" && r.resuelta) return false;
     return true;
   });
 
   const sumDif = filtradas.reduce((s, r) => s + r.diferencia, 0);
   const sumEsperado = filtradas.reduce((s, r) => s + r.efectivoEsperado, 0);
   const sumRecibido = filtradas.reduce((s, r) => s + r.importeValidado, 0);
-  const hayFiltro = cadete || desde || hasta || soloDif;
+  const hayFiltro = cadete || desde || hasta || !soloDif || !ocultarResueltas;
 
   const inputCls = "px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[12px] bg-gy50 focus:outline-none focus:border-g500";
 
@@ -147,8 +155,12 @@ function RevisadoTabla({ rows }: { rows: RevisadoRow[] }) {
           <input type="checkbox" checked={soloDif} onChange={(e) => setSoloDif(e.target.checked)} className="accent-red-600" />
           Solo con diferencia
         </label>
+        <label className="flex items-center gap-1.5 text-[12px] text-gy600 cursor-pointer py-1.5">
+          <input type="checkbox" checked={ocultarResueltas} onChange={(e) => setOcultarResueltas(e.target.checked)} className="accent-red-600" />
+          Ocultar resueltas
+        </label>
         {hayFiltro && (
-          <button onClick={() => { setCadete(""); setDesde(""); setHasta(""); setSoloDif(false); }}
+          <button onClick={() => { setCadete(""); setDesde(""); setHasta(""); setSoloDif(true); setOcultarResueltas(true); }}
             className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] font-medium text-gy600 hover:text-gy900">
             <i className="ti ti-x text-[13px]" /> Limpiar
           </button>
@@ -161,7 +173,7 @@ function RevisadoTabla({ rows }: { rows: RevisadoRow[] }) {
         <table className="w-full border-collapse text-[12px]">
           <thead>
             <tr className="bg-gy50">
-              {["Cadete", "Día", "Recaudado", "Ingresos efectivo", "Gastos", "Efectivo esperado", "Efectivo recibido", "Diferencia", "Estado"].map((h) => (
+              {["Cadete", "Día", "Recaudado", "Ingresos efectivo", "Gastos", "Efectivo esperado", "Efectivo recibido", "Diferencia", "Estado", "Acción"].map((h) => (
                 <th key={h} className="px-3.5 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gy400 border-b border-gy200 whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -183,20 +195,30 @@ function RevisadoTabla({ rows }: { rows: RevisadoRow[] }) {
                   </td>
                   <td className="px-3.5 py-2.5">
                     {conDif ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
-                        <i className="ti ti-alert-triangle" /> Diferencia
-                      </span>
+                      r.resuelta ? (
+                        <span title={r.notaResolucion ? `Nota: ${r.notaResolucion}` : undefined}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-gy600 bg-gy100 border border-gy200 rounded-full px-2 py-0.5">
+                          <i className="ti ti-check" /> Diferencia resuelta
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+                          <i className="ti ti-alert-triangle" /> Diferencia
+                        </span>
+                      )
                     ) : (
                       <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-g700 bg-g50 border border-g200 rounded-full px-2 py-0.5">
                         <i className="ti ti-check" /> Validado
                       </span>
                     )}
                   </td>
+                  <td className="px-3.5 py-2.5">
+                    {conDif && <ResolverDiferencia row={r} />}
+                  </td>
                 </tr>
               );
             })}
             {filtradas.length === 0 && (
-              <tr><td colSpan={9} className="py-10 text-center text-gy400">
+              <tr><td colSpan={10} className="py-10 text-center text-gy400">
                 {rows.length === 0 ? "Todavía no hay rendiciones revisadas" : "Ningún registro coincide con los filtros"}
               </td></tr>
             )}
@@ -210,7 +232,7 @@ function RevisadoTabla({ rows }: { rows: RevisadoRow[] }) {
                 <td className={`px-3.5 py-2.5 ${sumDif < 0 ? "text-red-600" : sumDif > 0 ? "text-amber-text" : "text-g700"}`}>
                   {sumDif >= 0 ? "+" : ""}{fmtMoneySign(sumDif)}
                 </td>
-                <td className="px-3.5 py-2.5" />
+                <td className="px-3.5 py-2.5" colSpan={2} />
               </tr>
             </tfoot>
           )}
@@ -368,6 +390,71 @@ function CadeteCard({ item, onSaved }: { item: RendicionCadete; onSaved: () => v
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Marca (o reabre) una diferencia de rendición de caja como resuelta — ej.
+// "descontado al cadete" o "corregido con la veterinaria". No cambia los
+// montos ya sellados, solo deja constancia de que se revisó para que deje
+// de aparecer entre las pendientes (ver filtro "Ocultar resueltas").
+function ResolverDiferencia({ row }: { row: RevisadoRow }) {
+  const router = useRouter();
+  const [editando, setEditando] = useState(false);
+  const [nota, setNota] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function enviar(resuelta: boolean) {
+    setSaving(true);
+    const res = await fetch("/api/caja/diferencias/resolver", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rendicionId: row.id, resuelta, nota: resuelta ? nota : undefined }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) { toast("error", json.error ?? "No se pudo guardar"); return; }
+    toast("success", resuelta ? "Diferencia marcada como resuelta ✓" : "Diferencia reabierta");
+    setEditando(false);
+    setNota("");
+    router.refresh();
+  }
+
+  if (row.resuelta) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        {row.resuelvePor && <span className="text-[10px] text-gy400">por {row.resuelvePor}</span>}
+        <button type="button" onClick={() => enviar(false)} disabled={saving}
+          className="text-[11px] font-medium text-gy500 hover:text-gy800 underline self-start disabled:opacity-50">
+          Reabrir
+        </button>
+      </div>
+    );
+  }
+
+  if (!editando) {
+    return (
+      <button type="button" onClick={() => setEditando(true)}
+        className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-g700 border border-g200 rounded-[6px] hover:bg-g50 whitespace-nowrap">
+        <i className="ti ti-check text-[12px]" /> Marcar resuelta
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 min-w-[220px]">
+      <input type="text" autoFocus value={nota} onChange={(e) => setNota(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") enviar(true); if (e.key === "Escape") setEditando(false); }}
+        placeholder="Ej: descontado al cadete"
+        className="flex-1 px-2 py-1 border-2 border-g300 rounded-[6px] text-[11px] focus:outline-none focus:border-g500" />
+      <button type="button" onClick={() => enviar(true)} disabled={saving}
+        className="px-2 py-1 bg-g700 text-white rounded-[6px] text-[11px] font-medium hover:bg-g800 disabled:opacity-50">
+        <i className="ti ti-check text-[12px]" />
+      </button>
+      <button type="button" onClick={() => setEditando(false)} disabled={saving}
+        className="px-1 text-gy400 hover:text-gy700">
+        <i className="ti ti-x text-[12px]" />
+      </button>
     </div>
   );
 }
