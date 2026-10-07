@@ -576,7 +576,14 @@ export function ChatApp({
                   {c.tipo === "dm" ? initials(nombre) : <i className={cn("ti", iconoConversacion(c), "text-[15px]")} />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className={cn("text-[12.5px] truncate", noLeida ? "font-bold text-gy900" : "font-semibold text-gy900")}>{nombre}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className={cn("text-[12.5px] truncate", noLeida ? "font-bold text-gy900" : "font-semibold text-gy900")}>{nombre}</div>
+                    {preview && (
+                      <span className={cn("text-[10px] shrink-0", noLeida ? "text-g700 font-semibold" : "text-gy400")}>
+                        {formatTime(preview.created_at)}
+                      </span>
+                    )}
+                  </div>
                   <div className={cn("text-[11px] truncate", noLeida ? "text-gy700 font-medium" : "text-gy400")}>
                     {preview
                       ? preview.adjunto_tipo
