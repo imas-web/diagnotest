@@ -120,7 +120,18 @@ export default async function DashboardPage() {
     admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "ok").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0),
     admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "observado").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0),
     admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "rechazado").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0),
-    admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "pendiente").eq("cancelado", false).then((r) => r.count ?? 0),
+    // A diferencia de los otros conteos de esta sección (que miran el mes en
+    // curso), este es un acumulado histórico de TODO lo pendiente — por eso
+    // necesita las mismas exclusiones que la bandeja real (retiros anulados
+    // y duplicados sospechosos quedan con su control en "pendiente" para
+    // siempre porque nadie los procesa; sin este join se sumaban igual y
+    // el KPI mostraba cientos de pendientes "fantasma" que no existen en
+    // la bandeja de preanalítica).
+    admin.from("control_preanalitica")
+      .select("id, retiro:retiro_id!inner(anulado, estado)", { count: "exact", head: true })
+      .eq("estado", "pendiente").eq("cancelado", false)
+      .eq("retiro.anulado", false).neq("retiro.estado", "duplicado_sospechoso")
+      .then((r) => r.count ?? 0),
     // ---- Mes anterior (para el Scorecard: compara mes en curso vs mes cerrado) ----
     admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "ok").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0),
     admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "observado").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0),
