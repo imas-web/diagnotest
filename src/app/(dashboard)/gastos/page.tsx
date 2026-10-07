@@ -22,8 +22,9 @@ export default async function GastosPage() {
   const pendientes = gastos?.filter((g) => g.estado === "pendiente") ?? [];
   const autorizados = gastos?.filter((g) => g.estado === "autorizado").reduce((s, g) => s + g.monto, 0) ?? 0;
 
-  const iconMap: Record<string, string> = { gasto: "ti-gas-station", retiro_dinero: "ti-cash" };
-  const iconBg: Record<string, string> = { gasto: "bg-purple-50 text-purple-600", retiro_dinero: "bg-amber-bg text-amber-text" };
+  const iconMap: Record<string, string> = { gasto: "ti-gas-station", retiro_dinero: "ti-cash", diferencia_caja: "ti-scale" };
+  const iconBg: Record<string, string> = { gasto: "bg-purple-50 text-purple-600", retiro_dinero: "bg-amber-bg text-amber-text", diferencia_caja: "bg-blue-50 text-blue-600" };
+  const tipoLabel: Record<string, string> = { retiro_dinero: "Retiro de dinero", diferencia_caja: "Diferencia de caja", gasto: "Gasto" };
 
   return (
     <div>
@@ -55,7 +56,7 @@ export default async function GastosPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] font-semibold text-gy900">{g.descripcion}</div>
-                <div className="text-[11px] text-gy400 mt-0.5">{formatDateTime(g.created_at)} · {g.tipo === "retiro_dinero" ? "Retiro de dinero" : "Gasto"}</div>
+                <div className="text-[11px] text-gy400 mt-0.5">{formatDateTime(g.created_at)} · {tipoLabel[g.tipo] ?? "Gasto"}</div>
                 <div className="mt-1.5 flex gap-1.5 items-center flex-wrap">
                   <PillStatus variant={g.estado === "autorizado" ? "autorizado" : g.estado === "observado" ? "observado" : "pendiente"} />
                   {g.estado === "observado" && g.observacion_jefe && (

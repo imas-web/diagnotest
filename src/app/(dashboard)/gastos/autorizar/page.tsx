@@ -8,9 +8,13 @@ import { GastosAuthClient } from "@/components/forms/GastosAuthClient";
 export default async function GastosAutorizarPage() {
   const supabase = await createClient();
 
+  // "Diferencia de caja" no es un gasto a reembolsar — es la nota del cadete
+  // sobre un faltante/sobrante de efectivo, que Dirección revisa en Control
+  // de Caja, no algo que el jefe de logística tenga que autorizar.
   const { data: gastos } = await supabase
     .from("gastos")
     .select(`*, personal:personal_id(nombre)`)
+    .neq("tipo", "diferencia_caja")
     .order("created_at", { ascending: false });
 
   const pendientes = gastos?.filter((g) => g.estado === "pendiente") ?? [];

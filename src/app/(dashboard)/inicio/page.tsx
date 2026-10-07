@@ -110,6 +110,20 @@ export default async function InicioPage() {
     });
   }
 
+  // Gastos de la caja abierta de hoy (sin rendir todavía) — para mostrarle al
+  // cadete cuánto efectivo debería tener en la mano (ingreso en efectivo menos
+  // estos gastos), sin que tenga que hacer la cuenta a mano.
+  let totalGastosHoy = 0;
+  if (personalId) {
+    const { data } = await supabase
+      .from("gastos")
+      .select("monto")
+      .eq("personal_id", personalId)
+      .eq("fecha_operativa", todayISO())
+      .is("rendicion_id", null);
+    totalGastosHoy = (data ?? []).reduce((s, g) => s + Number(g.monto ?? 0), 0);
+  }
+
   return (
     <MobileHome
       nombre={profile?.nombre ?? personal?.nombre ?? "Personal"}
@@ -119,6 +133,7 @@ export default async function InicioPage() {
       veterinarias={vets ?? []}
       pedidos={pedidos}
       retirosHoy={retirosHoy}
+      totalGastosHoy={totalGastosHoy}
     />
   );
 }

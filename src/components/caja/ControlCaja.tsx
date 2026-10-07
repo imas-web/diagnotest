@@ -324,8 +324,9 @@ function CadeteCard({ item, onSaved }: { item: RendicionCadete; onSaved: () => v
             <div className="text-[10px] font-semibold uppercase tracking-wide text-gy500 mb-1.5">Gastos del recorrido</div>
             <div className="flex flex-wrap gap-1.5">
               {item.gastos.map((g, i) => (
-                <span key={i} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] bg-white border border-gy200 text-gy700">
+                <span key={i} className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border ${g.tipo === "diferencia_caja" ? "bg-amber-bg border-amber/40 text-amber-text" : "bg-white border-gy200 text-gy700"}`}>
                   {g.tipo === "retiro_dinero" && <i className="ti ti-cash text-[12px] text-purple-500" />}
+                  {g.tipo === "diferencia_caja" && <i className="ti ti-scale text-[12px]" />}
                   {g.descripcion}: <b>{fmtMoneySign(g.monto)}</b>
                 </span>
               ))}

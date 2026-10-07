@@ -149,12 +149,14 @@ export function Sidebar({ profile, onNavigate }: Props) {
         .then(({ count }) => setPedidosCount(count ?? 0));
     }
 
-    // Gastos pendientes de autorizar.
+    // Gastos pendientes de autorizar (las diferencias de caja no cuentan:
+    // no son un gasto a reembolsar, las revisa Dirección en Control de Caja).
     if (["jefe_logistica", "super_admin", "dueno"].includes(rol)) {
       supabase
         .from("gastos")
         .select("id", { count: "exact", head: true })
         .eq("estado", "pendiente")
+        .neq("tipo", "diferencia_caja")
         .then(({ count }) => setGastosCount(count ?? 0));
     }
 

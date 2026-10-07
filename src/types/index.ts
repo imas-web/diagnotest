@@ -40,7 +40,7 @@ export type EstadoPedido =
   | "vencido"
   | "cancelado";
 
-export type TipoGasto = "gasto" | "retiro_dinero";
+export type TipoGasto = "gasto" | "retiro_dinero" | "diferencia_caja";
 
 export type EstadoGasto =
   | "pendiente"
