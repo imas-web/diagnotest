@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ControlCard } from "@/components/ui/ControlCard";
+import { ResponsableSelector } from "@/components/preanalitica/ResponsableSelector";
+import { toast } from "@/components/ui/ToastNotification";
 import { todayISO, daysAgoISO } from "@/lib/utils/dates";
+import { leerRespGuardado, guardarResp } from "@/lib/preanalitica/responsableLocal";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>;
@@ -41,13 +44,14 @@ function etiquetaFecha(iso: string): string {
   });
 }
 
-// "¿Quién controló?" ya no se marca en lote desde esta bandeja: cada ficha
-// (ControlCard) trae su propio selector, que se precarga con lo último que
-// ESTA CUENTA eligió en cualquier otra ficha (localStorage por usuarioId,
-// ver responsableLocal.ts). Así cada preanalítica controla ficha por ficha
-// sin perder el nombre que venía marcando, y sin pisarle el campo a nadie
-// más — un botón de lote hacía que quien aplicara primero se quedara con
-// todo lo que estaba en blanco, dejándole casi nada a la siguiente persona.
+// "¿Quién controló?" se maneja distinto según la etapa:
+//   - Control 1: 2 personas fijas controlan TODO el día — se aplican en
+//     lote desde esta bandeja (bajo), y se repiten solas en lo que vaya
+//     entrando (preanalitica_responsable_activo + trigger en la base).
+//   - Control 2: una persona controla ficha por ficha — cada ControlCard
+//     trae su propio selector, precargado con lo último que ESA CUENTA
+//     eligió (localStorage por usuarioId, ver responsableLocal.ts), sin
+//     lote: aplicar de a una evita que una cuenta le pise el campo a otra.
 
 export function PreanaliticaBandeja({ controles, usuarioId }: { controles: AnyRecord[]; usuarioId: string }) {
   const router = useRouter();
@@ -59,6 +63,43 @@ export function PreanaliticaBandeja({ controles, usuarioId }: { controles: AnyRe
   // así nunca se "pierde" un filtro al aplicar el otro.
   const [qCadete, setQCadete] = useState("");
   const [qVete, setQVete] = useState("");
+
+  // Responsables de Control 1 (lote, para todo el día). Arranca vacío en el
+  // render del servidor y se completa apenas monta (localStorage no existe
+  // en el servidor) con lo último aplicado desde esta cuenta, solo para no
+  // tener que re-tipear los mismos 2 nombres cada vez que se entra.
+  const [respC1, setRespC1] = useState<string | null>(null);
+  useEffect(() => { setRespC1(leerRespGuardado("c1", usuarioId)); }, [usuarioId]);
+  const [aplicandoC1, setAplicandoC1] = useState(false);
+
+  // Refresco automático: sin esto, cuando Control 1 termina una ficha no
+  // aparece en Control 2 hasta que alguien recargue a mano (F5) o toque
+  // "Actualizar". router.refresh() vuelve a pedir los datos frescos del
+  // servidor sin perder el estado de esta pantalla (filtros, selección, etc).
+  useEffect(() => {
+    const id = setInterval(() => router.refresh(), 15000);
+    return () => clearInterval(id);
+  }, [router]);
+
+  async function aplicarResponsableC1() {
+    if (!(respC1 ?? "").trim()) { toast("error", "Marcá quién controla en Control 1"); return; }
+    setAplicandoC1(true);
+    const res = await fetch("/api/preanalitica/responsable-masivo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ responsable: respC1 }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setAplicandoC1(false);
+    if (!res.ok) { toast("error", json.error ?? "No se pudo aplicar"); return; }
+    toast("success", `Aplicado a ${json.actualizados ?? 0} ficha(s) de Control 1 — se va a repetir solo en lo que entre durante el día ✓`);
+    router.refresh();
+  }
+
+  function cambiarRespC1(v: string | null) {
+    setRespC1(v);
+    guardarResp("c1", usuarioId, v);
+  }
 
   // En la bandeja solo se trabajan los pendientes; los observados tienen su
   // propia pantalla. Se reparten en dos solapas según la etapa del control.
@@ -132,6 +173,26 @@ export function PreanaliticaBandeja({ controles, usuarioId }: { controles: AnyRe
           <i className="ti ti-refresh text-[15px]" /> Actualizar
         </button>
       </div>
+
+      {/* Solo Control 1: 2 personas fijas para todo el día, aplicado en lote
+          a lo pendiente + heredado automáticamente por lo que vaya entrando. */}
+      {etapa === "c1" && (
+        <div className="bg-g50/60 border border-g700/20 rounded-[12px] p-3.5 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <i className="ti ti-users text-g700 text-[15px]" />
+            <span className="text-[13px] font-semibold text-g800">¿Quiénes controlan en Control 1 hoy?</span>
+            <span className="text-[11px] text-gy500">se aplica a toda la bandeja y se repite solo en lo que vaya entrando</span>
+          </div>
+          <ResponsableSelector value={respC1} onChange={cambiarRespC1} />
+          <button type="button" onClick={aplicarResponsableC1} disabled={aplicandoC1}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-g800 text-white text-[12px] font-semibold rounded-[8px] hover:bg-g700 disabled:opacity-50">
+            {aplicandoC1
+              ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              : <i className="ti ti-users-group text-[14px]" />}
+            Aplicar a Control 1
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[170px] max-w-[260px]">
