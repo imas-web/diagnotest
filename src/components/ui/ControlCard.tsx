@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "@/components/ui/ToastNotification";
@@ -9,6 +9,7 @@ import { fmtMoneySign } from "@/lib/utils/format";
 import { formatDateTime } from "@/lib/utils/dates";
 import { ResponsableSelector } from "@/components/preanalitica/ResponsableSelector";
 import { AdjuntosPreanalitica } from "@/components/preanalitica/AdjuntosPreanalitica";
+import { leerRespGuardado, guardarResp } from "@/lib/preanalitica/responsableLocal";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>;
@@ -23,6 +24,10 @@ interface Props {
   control: AnyRecord;
   tipo: "pre" | "cob";
   etapa?: Etapa;
+  // Cuenta logueada: permite que el selector de "¿quién controló?" de esta
+  // ficha arranque con lo último que ESTA cuenta eligió (ver
+  // responsableLocal.ts) en vez de depender del botón de lote de la bandeja.
+  usuarioId?: string;
 }
 
 // Etiquetas que preanalítica puede marcar al controlar una muestra.
@@ -52,7 +57,7 @@ const METODO_PAGO_LABEL: Record<string, string> = {
   mercadopago: "Mercado Pago",
 };
 
-export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
+export function ControlCard({ control, tipo, etapa = "obs", usuarioId }: Props) {
   const router = useRouter();
   const retiro = control.retiro as AnyRecord;
   const personal = retiro?.personal as AnyRecord;
@@ -75,6 +80,33 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
   const [etiquetas, setEtiquetas] = useState<string[]>(control.etiquetas ?? []);
   const [responsable1, setResponsable1] = useState<string | null>(control.responsable_1 ?? null);
   const [responsable2, setResponsable2] = useState<string | null>(control.responsable_2 ?? null);
+  // Si esta ficha todavía no tiene a nadie marcado, se precarga con lo último
+  // que ESTA cuenta eligió en otra ficha (localStorage, por usuarioId) — así
+  // cada preanalítica controla ficha por ficha sin tener que volver a elegir
+  // el nombre cada vez. Se hace en un efecto (no en el useState inicial) para
+  // que el primer render coincida con el del servidor y no rompa la hidratación.
+  useEffect(() => {
+    if (!usuarioId) return;
+    if (!control.responsable_1 && !responsable1) {
+      const guardado = leerRespGuardado("c1", usuarioId);
+      if (guardado) setResponsable1(guardado);
+    }
+    if (!control.responsable_2 && !responsable2) {
+      const guardado = leerRespGuardado("c2", usuarioId);
+      if (guardado) setResponsable2(guardado);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usuarioId]);
+  // Cada vez que esta cuenta elige un responsable en una ficha, se recuerda
+  // para precargarlo en la próxima — personal por cuenta, nunca compartido.
+  function elegirResponsable1(v: string | null) {
+    setResponsable1(v);
+    if (usuarioId) guardarResp("c1", usuarioId, v);
+  }
+  function elegirResponsable2(v: string | null) {
+    setResponsable2(v);
+    if (usuarioId) guardarResp("c2", usuarioId, v);
+  }
   const [saving, setSaving] = useState(false);
   const [savingEdicion, setSavingEdicion] = useState(false);
   const [savingDuplicado, setSavingDuplicado] = useState(false);
@@ -512,7 +544,7 @@ export function ControlCard({ control, tipo, etapa = "obs" }: Props) {
             <div className="flex-1 min-w-[240px]">
               <ResponsableSelector
                 value={etapa === "c1" ? responsable1 : responsable2}
-                onChange={etapa === "c1" ? setResponsable1 : setResponsable2}
+                onChange={etapa === "c1" ? elegirResponsable1 : elegirResponsable2}
               />
             </div>
           </div>
