@@ -96,6 +96,21 @@ export function parsearExcelStock(buffer: Buffer): ResultadoParseo {
     });
   }
 
-  if (!filas.length) errores.push("No se encontró ninguna fila válida (con código y nombre).");
-  return { filas, errores, tieneCategoria, tieneAlmacen };
+  // Algunos exports de Interpracsys repiten el mismo código (ej. una fila por
+  // almacén). Postgres no permite que un mismo upsert toque la misma fila dos
+  // veces, así que acá se deduplica: se queda con la ÚLTIMA aparición del
+  // código en el archivo y avisa cuáles se repitieron.
+  const vistos = new Map<string, FilaStock>();
+  const duplicados = new Set<string>();
+  for (const f of filas) {
+    if (vistos.has(f.codigo)) duplicados.add(f.codigo);
+    vistos.set(f.codigo, f);
+  }
+  const filasUnicas = Array.from(vistos.values());
+  if (duplicados.size) {
+    errores.push(`${duplicados.size} código(s) aparecían repetidos en el archivo — se usó el último valor de cada uno: ${Array.from(duplicados).slice(0, 10).join(", ")}${duplicados.size > 10 ? "…" : ""}`);
+  }
+
+  if (!filasUnicas.length) errores.push("No se encontró ninguna fila válida (con código y nombre).");
+  return { filas: filasUnicas, errores, tieneCategoria, tieneAlmacen };
 }
