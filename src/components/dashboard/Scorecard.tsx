@@ -63,6 +63,15 @@ export function Scorecard({ data }: { data: DashData }) {
     return out;
   }, [data.rows]);
   const maxDay = useMemo(() => rows.reduce((m, r) => Math.max(m, r.day), 0), [rows]);
+  // Corte real para los indicadores "en curso": nunca el día de hoy, aunque
+  // ya haya retiros cargados. Las muestras entran a la tarde, así que contar
+  // el día de hoy a media mañana distorsiona el semáforo con un día a medio
+  // cargar. Se usa la fecha real del servidor (hoyISO), no solo el último día
+  // con datos, para que el corte sea correcto incluso si hoy ya tiene filas.
+  const corteDay = useMemo(() => {
+    const hoyOffset = dayIndexUTC(data.hoyISO) - baseDay;
+    return Math.min(maxDay, hoyOffset - 1);
+  }, [data.hoyISO, baseDay, maxDay]);
 
   const kpis = useMemo(() => {
     function aggRange(f: number, t: number) {
@@ -78,7 +87,7 @@ export function Scorecard({ data }: { data: DashData }) {
     const lbl = (d: number) => { const x = dateFromDay(baseDay, d); return x.getUTCDate() + "/" + (x.getUTCMonth() + 1); };
 
     // ---------- SEMANAL: últimos 7 días vs promedio de las 8 semanas previas ----------
-    const semF = Math.max(0, maxDay - 6), semT = maxDay;
+    const semF = Math.max(0, corteDay - 6), semT = corteDay;
     const semanaActual = aggRange(semF, semT);
     const semanasPrev: { f: number; t: number; agg: ReturnType<typeof aggRange> }[] = [];
     for (let i = 1; i <= 8; i++) {
@@ -152,9 +161,10 @@ export function Scorecard({ data }: { data: DashData }) {
       return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
     };
     const monthLabel = (yMonth: number) => { const year = Math.floor(yMonth / 12), month = yMonth % 12; return `${MES_CORTO[month]} ${year}`; };
-    const curMonth = monthOf(maxDay);
-    let mf = maxDay, mt = maxDay;
-    for (const r of rows) if (monthOf(r.day) === curMonth) { if (r.day < mf) mf = r.day; if (r.day > mt) mt = r.day; }
+    const curMonth = monthOf(corteDay);
+    let mf = corteDay, mt = corteDay;
+    // r.day > corteDay queda afuera (es "hoy" o más adelante): no se cuenta.
+    for (const r of rows) if (r.day <= corteDay && monthOf(r.day) === curMonth) { if (r.day < mf) mf = r.day; if (r.day > mt) mt = r.day; }
     const mesActual = aggRange(mf, mt);
     const diasTranscurridos = mt - mf + 1;
     const diasDelMes = daysInCalendarMonth(curMonth);
@@ -322,7 +332,7 @@ export function Scorecard({ data }: { data: DashData }) {
     ];
 
     return { semanales, mensuales };
-  }, [rows, maxDay, baseDay, data]);
+  }, [rows, corteDay, baseDay, data]);
 
   const allKpis = [...kpis.semanales, ...kpis.mensuales];
   const openKpi = allKpis.find((k) => k.id === openId) ?? null;

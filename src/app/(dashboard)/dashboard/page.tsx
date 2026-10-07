@@ -282,6 +282,7 @@ export default async function DashboardPage() {
 
   const data: DashData = {
     baseISO: isoOfDayIndex(minDay),
+    hoyISO: today,
     cadetes,
     zonas,
     vets: vetsOut,

@@ -5,6 +5,7 @@ import { fmtMoneySign } from "@/lib/utils/format";
 
 export type DashData = {
   baseISO: string;
+  hoyISO: string;
   cadetes: string[];
   zonas: string[]; // [0] = "Sin zona"
   vets: [string, number][]; // [nombre, zonaIdx]
