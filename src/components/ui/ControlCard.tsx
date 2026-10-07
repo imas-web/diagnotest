@@ -80,23 +80,29 @@ export function ControlCard({ control, tipo, etapa = "obs", usuarioId }: Props) 
   const [etiquetas, setEtiquetas] = useState<string[]>(control.etiquetas ?? []);
   const [responsable1, setResponsable1] = useState<string | null>(control.responsable_1 ?? null);
   const [responsable2, setResponsable2] = useState<string | null>(control.responsable_2 ?? null);
-  // Si esta ficha todavía no tiene a nadie marcado, se precarga con lo último
-  // que ESTA cuenta eligió en otra ficha (localStorage, por usuarioId) — así
-  // cada preanalítica controla ficha por ficha sin tener que volver a elegir
-  // el nombre cada vez. Se hace en un efecto (no en el useState inicial) para
-  // que el primer render coincida con el del servidor y no rompa la hidratación.
+  // Si el servidor ya trae un responsable para esta ficha (ej. el lote de
+  // Control 1, o lo que haya guardado otra cuenta), se sigue ESE valor —
+  // en un efecto, no solo en el useState inicial, porque la bandeja se
+  // refresca sola cada 15s (router.refresh()) y, al ser el mismo componente
+  // (misma key), React no vuelve a correr el useState inicial con el prop
+  // nuevo: sin este efecto, el valor recién aplicado en lote no se veía
+  // hasta recargar a mano (F5). Si todavía no hay nada marcado, se precarga
+  // con lo último que ESTA cuenta eligió en otra ficha (localStorage, por
+  // usuarioId), para no tener que volver a elegir el nombre cada vez.
   useEffect(() => {
-    if (!usuarioId) return;
-    if (!control.responsable_1 && !responsable1) {
+    if (control.responsable_1) setResponsable1(control.responsable_1);
+    else if (usuarioId) {
       const guardado = leerRespGuardado("c1", usuarioId);
       if (guardado) setResponsable1(guardado);
     }
-    if (!control.responsable_2 && !responsable2) {
+  }, [control.responsable_1, usuarioId]);
+  useEffect(() => {
+    if (control.responsable_2) setResponsable2(control.responsable_2);
+    else if (usuarioId) {
       const guardado = leerRespGuardado("c2", usuarioId);
       if (guardado) setResponsable2(guardado);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usuarioId]);
+  }, [control.responsable_2, usuarioId]);
   // Cada vez que esta cuenta elige un responsable en una ficha, se recuerda
   // para precargarlo en la próxima — personal por cuenta, nunca compartido.
   function elegirResponsable1(v: string | null) {
