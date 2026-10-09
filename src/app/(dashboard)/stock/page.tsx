@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatCard } from "@/components/ui/StatCard";
-import { StockBandeja } from "@/components/stock/StockBandeja";
+import { StockModulo } from "@/components/stock/StockModulo";
 import { landingPathForRole } from "@/lib/utils/roles";
 
 export const revalidate = 15;
@@ -18,11 +18,21 @@ export default async function StockPage() {
   if (!perfil || !ROLES.includes(perfil.rol)) redirect(landingPathForRole(perfil?.rol));
 
   const admin = createAdminClient();
-  const { data: articulos } = await admin
-    .from("stock_articulos")
-    .select("*")
-    .order("categoria", { ascending: true, nullsFirst: false })
-    .order("nombre", { ascending: true });
+  const [{ data: articulos }, { data: movimientos }] = await Promise.all([
+    admin
+      .from("stock_articulos")
+      .select("*")
+      .order("categoria", { ascending: true, nullsFirst: false })
+      .order("nombre", { ascending: true }),
+    // Todo el historial de cargas/conteos, para la pestaña de Evolución
+    // mensual — el volumen es chico (una carga por mes × unos cientos de
+    // artículos), así que se trae entero de una.
+    admin
+      .from("stock_movimientos")
+      .select("id, tipo, valor, created_at, articulo:articulo_id(id, codigo, nombre, categoria)")
+      .order("created_at", { ascending: true })
+      .limit(20000),
+  ]);
 
   const lista = articulos ?? [];
   const enMinimo = lista.filter((a) => a.stock_sistema <= a.stock_minimo).length;
@@ -40,7 +50,7 @@ export default async function StockPage() {
           <StatCard label="Sin conteo real cargado" value={sinConteo} />
         </div>
 
-        <StockBandeja articulos={lista} />
+        <StockModulo articulos={lista} movimientos={movimientos ?? []} />
       </div>
     </div>
   );
