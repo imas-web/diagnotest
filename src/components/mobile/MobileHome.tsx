@@ -141,7 +141,7 @@ export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterina
   const [gTipo, setGTipo] = useState<"gasto" | "retiro_dinero" | "diferencia_caja">("gasto");
   const [gDesc, setGDesc] = useState("");
   const [gMonto, setGMonto] = useState("");
-  const [gSigno, setGSigno] = useState<"falta" | "sobra">("falta");
+  const [gSigno, setGSigno] = useState<"falta" | "sobra" | "ok">("falta");
   const [gFecha, setGFecha] = useState(todayISO());
   const [savingGasto, setSavingGasto] = useState(false);
   const [fotoGasto, setFotoGasto] = useState<File | null>(null);
@@ -380,19 +380,23 @@ export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterina
     const esDiferencia = gTipo === "diferencia_caja";
     if (!esDiferencia && !gDesc.trim()) { toast("error", "Seleccioná un concepto"); return; }
     const montoAbs = Math.abs(parseFloat(gMonto) || 0);
-    if (esDiferencia && montoAbs <= 0) { toast("error", "Ingresá cuánto falta o sobra"); return; }
+    // "OK" no necesita importe (es la confirmación de que coincide, sin falta ni sobra).
+    if (esDiferencia && gSigno !== "ok" && montoAbs <= 0) { toast("error", "Ingresá cuánto falta o sobra"); return; }
     setSavingGasto(true);
 
     // Diferencia de caja: "falta" suma al gasto (empuja el efectivo esperado
     // hacia abajo, hasta igualar lo que realmente tiene en la mano); "sobra"
     // resta (lo empuja hacia arriba) — así el monto siempre se ve positivo
-    // en el formulario, pero internamente queda con el signo correcto.
+    // en el formulario, pero internamente queda con el signo correcto. "OK"
+    // queda en $0: deja asentado que el cadete validó el efectivo contra lo
+    // que figura en el sistema, sin mover el cálculo de efectivo esperado.
+    const descLabel = { falta: "falta", sobra: "sobra", ok: "OK — coincide" }[gSigno];
     const gasto = {
       id: crypto.randomUUID(),
       personal_id: personalId,
       tipo: gTipo,
-      descripcion: esDiferencia ? `Diferencia de caja (${gSigno})` : gDesc,
-      monto: esDiferencia ? (gSigno === "sobra" ? -montoAbs : montoAbs) : (parseFloat(gMonto) || 0),
+      descripcion: esDiferencia ? `Diferencia de caja (${descLabel})` : gDesc,
+      monto: esDiferencia ? (gSigno === "ok" ? 0 : gSigno === "sobra" ? -montoAbs : montoAbs) : (parseFloat(gMonto) || 0),
       fecha_operativa: gFecha,
       comprobante_url: null as string | null,
       estado: "pendiente" as const,
@@ -780,15 +784,17 @@ export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterina
               <div>
                 <label className="block text-[11px] font-semibold text-gy600 mb-1.5">Contaste tu efectivo y...</label>
                 <div className="flex gap-2">
-                  {([["falta", "Me falta"], ["sobra", "Me sobra"]] as ["falta" | "sobra", string][]).map(([val, label]) => (
+                  {([["falta", "Me falta"], ["sobra", "Me sobra"], ["ok", "OK, coincide"]] as ["falta" | "sobra" | "ok", string][]).map(([val, label]) => (
                     <button key={val} type="button" onClick={() => setGSigno(val)}
-                      className={`flex-1 py-2.5 rounded-[10px] border-2 text-[13px] font-medium transition-all ${gSigno === val ? (val === "falta" ? "bg-red-600 border-red-600 text-white" : "bg-g700 border-g700 text-white") : "bg-white text-gy600 border-gy200"}`}>
+                      className={`flex-1 py-2.5 rounded-[10px] border-2 text-[12px] font-medium transition-all ${gSigno === val ? (val === "falta" ? "bg-red-600 border-red-600 text-white" : val === "sobra" ? "bg-g700 border-g700 text-white" : "bg-blue-600 border-blue-600 text-white") : "bg-white text-gy600 border-gy200"}`}>
                       {label}
                     </button>
                   ))}
                 </div>
                 <div className="text-[11px] text-gy400 mt-1.5">
-                  Ingresá el importe de la diferencia, siempre en positivo — acá elegís si falta o sobra.
+                  {gSigno === "ok"
+                    ? "Vas a dejar asentado que tu efectivo coincide con lo que figura en DiagnoLis."
+                    : "Ingresá el importe de la diferencia, siempre en positivo — acá elegís si falta o sobra."}
                 </div>
               </div>
             ) : (
@@ -805,14 +811,16 @@ export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterina
                 </select>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-gy600 mb-1.5">
-                  {gTipo === "diferencia_caja" ? "Diferencia $" : "Monto $"}
-                </label>
-                <input type="number" inputMode="decimal" min="0" className={`${inputCls} ${bigCls}`} placeholder="0"
-                  value={gMonto} onChange={(e) => setGMonto(e.target.value)} />
-              </div>
+            <div className={gTipo === "diferencia_caja" && gSigno === "ok" ? "grid grid-cols-1" : "grid grid-cols-2 gap-3"}>
+              {!(gTipo === "diferencia_caja" && gSigno === "ok") && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-gy600 mb-1.5">
+                    {gTipo === "diferencia_caja" ? "Diferencia $" : "Monto $"}
+                  </label>
+                  <input type="number" inputMode="decimal" min="0" className={`${inputCls} ${bigCls}`} placeholder="0"
+                    value={gMonto} onChange={(e) => setGMonto(e.target.value)} />
+                </div>
+              )}
               <div>
                 <label className="block text-[11px] font-semibold text-gy600 mb-1.5">Fecha</label>
                 <input type="date" className={inputCls} value={gFecha} onChange={(e) => setGFecha(e.target.value)} />
@@ -836,7 +844,7 @@ export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterina
             <button onClick={guardarGasto} disabled={savingGasto}
               className="w-full py-3.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-[12px] text-[15px] flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
               {savingGasto ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <i className="ti ti-device-floppy text-[18px]" />}
-              {gTipo === "diferencia_caja" ? "GUARDAR DIFERENCIA" : "GUARDAR GASTO"}
+              {gTipo === "diferencia_caja" ? (gSigno === "ok" ? "CONFIRMAR OK" : "GUARDAR DIFERENCIA") : "GUARDAR GASTO"}
             </button>
           </div>
         )}
