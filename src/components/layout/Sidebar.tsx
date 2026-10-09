@@ -61,6 +61,7 @@ function getNavItems(rol: string): NavItem[] {
       return [
         { href: "/dashboard", label: "Dashboard", icon: "ti-chart-bar" },
         { href: "/caja", label: "Control de caja", icon: "ti-cash-register" },
+        { href: "/caja/validaciones", label: "Validación de cadetes", icon: "ti-user-check", badgeClass: "default" },
         { href: "/retiros", label: "Todos los retiros", icon: "ti-table" },
         { href: "/gastos/autorizar", label: "Gastos", icon: "ti-cash" },
         { href: "/stock", label: "Stock", icon: "ti-boxes" },
@@ -70,6 +71,7 @@ function getNavItems(rol: string): NavItem[] {
       return [
         { href: "/dashboard", label: "Dashboard", icon: "ti-chart-bar" },
         { href: "/caja", label: "Control de caja", icon: "ti-cash-register" },
+        { href: "/caja/validaciones", label: "Validación de cadetes", icon: "ti-user-check", badgeClass: "default" },
         { href: "/resumen", label: "Resumen", icon: "ti-report-analytics" },
         { href: "/preanalitica/observados", label: "Observados", icon: "ti-alert-circle" },
         { href: "/pedidos", label: "Pedidos de retiro", icon: "ti-map-pin", badgeClass: "blue" },
@@ -125,6 +127,7 @@ export function Sidebar({ profile, onNavigate }: Props) {
   const [cobPendCount, setCobPendCount] = useState(0);
   const [cobDifCount, setCobDifCount] = useState(0);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [validacionPendCount, setValidacionPendCount] = useState(0);
 
   const rol = profile.rol;
   const refreshBadges = useCallback(() => {
@@ -158,6 +161,23 @@ export function Sidebar({ profile, onNavigate }: Props) {
         .eq("estado", "pendiente")
         .neq("tipo", "diferencia_caja")
         .then(({ count }) => setGastosCount(count ?? 0));
+    }
+
+    // Cadetes con caja abierta que todavía no cargaron su "diferencia de
+    // caja" (validación de efectivo) — cruce de dos consultas livianas, no
+    // un count directo, porque hay que comparar qué (cadete, día) de los
+    // abiertos NO tiene su validación.
+    if (["dueno", "super_admin"].includes(rol)) {
+      Promise.all([
+        supabase.from("retiros").select("personal_id, fecha_operativa").is("rendicion_id", null).eq("anulado", false).limit(2000),
+        supabase.from("gastos").select("personal_id, fecha_operativa").is("rendicion_id", null).eq("tipo", "diferencia_caja").limit(2000),
+      ]).then(([{ data: retiros }, { data: gastos }]) => {
+        const validadas = new Set((gastos ?? []).map((g) => `${g.personal_id}|${g.fecha_operativa}`));
+        const abiertas = new Set((retiros ?? []).map((r) => `${r.personal_id}|${r.fecha_operativa}`));
+        let sinValidar = 0;
+        abiertas.forEach((k) => { if (!validadas.has(k)) sinValidar++; });
+        setValidacionPendCount(sinValidar);
+      });
     }
 
     // Cancelados / anulados por preanalítica (solo super_admin lo ve en el menú).
@@ -257,6 +277,7 @@ export function Sidebar({ profile, onNavigate }: Props) {
             : item.href === "/cobranzas" ? (cobPendCount || undefined)
             : item.href === "/cobranzas/diferencias" ? (cobDifCount || undefined)
             : item.href === "/chat" ? (chatUnreadCount || undefined)
+            : item.href === "/caja/validaciones" ? (validacionPendCount || undefined)
             : item.badge;
           return (
             <Link
