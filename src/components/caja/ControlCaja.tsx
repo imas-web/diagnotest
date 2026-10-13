@@ -117,15 +117,15 @@ export function ControlCaja({ fecha, items, revisados, initialTab, initialDesde,
         </div>
       ) : (
         <RevisadoTabla rows={revisados} desde={desde} hasta={hasta}
-          onDesde={(v) => navegar({ desde: v })} onHasta={(v) => navegar({ hasta: v })} />
+          onConsultar={(d, h) => navegar({ desde: d, hasta: h })} />
       )}
     </div>
   );
 }
 
-function RevisadoTabla({ rows, desde, hasta, onDesde, onHasta }: {
+function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
   rows: RevisadoRow[]; desde: string; hasta: string;
-  onDesde: (v: string) => void; onHasta: (v: string) => void;
+  onConsultar: (desde: string, hasta: string) => void;
 }) {
   const fmtDia = (f: string) => {
     const [y, m, d] = f.split("-");
@@ -133,6 +133,15 @@ function RevisadoTabla({ rows, desde, hasta, onDesde, onHasta }: {
   };
 
   const [cadete, setCadete] = useState("");
+  // Inputs de fecha en estado propio (no navegan solas): si cada tecleo
+  // disparara la consulta al servidor, un "date" nativo dispara onChange con
+  // estados intermedios mientras se escribe día/mes/año y la navegación corta
+  // la edición a mitad de camino. Se consulta recién al tocar "Consultar"
+  // (o "Limpiar"), y se resincronizan con lo que vino del servidor acá abajo.
+  const [desdeInput, setDesdeInput] = useState(desde);
+  const [hastaInput, setHastaInput] = useState(hasta);
+  useEffect(() => setDesdeInput(desde), [desde]);
+  useEffect(() => setHastaInput(hasta), [hasta]);
   // Por defecto, esta tabla arranca mostrando justo lo que hay que resolver:
   // solo diferencias, sin las que ya se marcaron como resueltas. Un par de
   // checks la vuelven a abrir a todo el historial (validados + resueltas).
@@ -153,7 +162,7 @@ function RevisadoTabla({ rows, desde, hasta, onDesde, onHasta }: {
   const sumDif = filtradas.reduce((s, r) => s + r.diferencia, 0);
   const sumEsperado = filtradas.reduce((s, r) => s + r.efectivoEsperado, 0);
   const sumRecibido = filtradas.reduce((s, r) => s + r.importeValidado, 0);
-  const hayFiltro = cadete || desde || hasta || !soloDif || !ocultarResueltas;
+  const hayFiltro = cadete || desde || hasta || desdeInput || hastaInput || !soloDif || !ocultarResueltas;
 
   const inputCls = "px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[12px] bg-gy50 focus:outline-none focus:border-g500";
 
@@ -170,12 +179,16 @@ function RevisadoTabla({ rows, desde, hasta, onDesde, onHasta }: {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-semibold uppercase tracking-wide text-gy400">Desde</label>
-          <input type="date" value={desde} onChange={(e) => onDesde(e.target.value)} className={inputCls} />
+          <input type="date" value={desdeInput} onChange={(e) => setDesdeInput(e.target.value)} className={inputCls} />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-semibold uppercase tracking-wide text-gy400">Hasta</label>
-          <input type="date" value={hasta} onChange={(e) => onHasta(e.target.value)} className={inputCls} />
+          <input type="date" value={hastaInput} onChange={(e) => setHastaInput(e.target.value)} className={inputCls} />
         </div>
+        <button onClick={() => onConsultar(desdeInput, hastaInput)}
+          className="px-3.5 py-1.5 bg-g800 text-white text-[12px] font-medium rounded-[8px] hover:bg-g700">
+          Consultar
+        </button>
         <label className="flex items-center gap-1.5 text-[12px] text-gy600 cursor-pointer py-1.5">
           <input type="checkbox" checked={soloDif} onChange={(e) => setSoloDif(e.target.checked)} className="accent-red-600" />
           Solo con diferencia
@@ -185,7 +198,7 @@ function RevisadoTabla({ rows, desde, hasta, onDesde, onHasta }: {
           Ocultar resueltas
         </label>
         {hayFiltro && (
-          <button onClick={() => { setCadete(""); onDesde(""); onHasta(""); setSoloDif(true); setOcultarResueltas(true); }}
+          <button onClick={() => { setCadete(""); setDesdeInput(""); setHastaInput(""); setSoloDif(true); setOcultarResueltas(true); onConsultar("", ""); }}
             className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] font-medium text-gy600 hover:text-gy900">
             <i className="ti ti-x text-[13px]" /> Limpiar
           </button>
