@@ -34,6 +34,7 @@ function getNavItems(rol: string): NavItem[] {
         { href: "/admin/veterinarias", label: "Veterinarias", icon: "ti-building-hospital" },
         { href: "/retiros/duplicados", label: "Duplicados", icon: "ti-copy", badgeClass: "amber" },
         { href: "/gastos/autorizar", label: "Gastos a autorizar", icon: "ti-cash", badgeClass: "purple" },
+        { href: "/caja/validaciones", label: "Validación de cadetes", icon: "ti-user-check", badgeClass: "default" },
         { href: "/chat", label: "Chat", icon: "ti-message-circle" },
       ];
     case "preanalitica":
@@ -167,7 +168,7 @@ export function Sidebar({ profile, onNavigate }: Props) {
     // caja" (validación de efectivo) — cruce de dos consultas livianas, no
     // un count directo, porque hay que comparar qué (cadete, día) de los
     // abiertos NO tiene su validación.
-    if (["dueno", "super_admin"].includes(rol)) {
+    if (["jefe_logistica", "dueno", "super_admin"].includes(rol)) {
       Promise.all([
         supabase.from("retiros").select("personal_id, fecha_operativa").is("rendicion_id", null).eq("anulado", false).limit(2000),
         supabase.from("gastos").select("personal_id, fecha_operativa").is("rendicion_id", null).eq("tipo", "diferencia_caja").limit(2000),

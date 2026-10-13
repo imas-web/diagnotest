@@ -3,8 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatCard } from "@/components/ui/StatCard";
-import { esDireccion, landingPathForRole } from "@/lib/utils/roles";
+import { landingPathForRole } from "@/lib/utils/roles";
 import { ValidacionCadetes, type CajaValidacion } from "@/components/caja/ValidacionCadetes";
+
+// Además de Dirección, el jefe de logística controla directamente a los
+// cadetes que tiene a cargo (mismo alcance que Duplicados/Gastos a autorizar).
+const ROLES_CON_ACCESO = ["jefe_logistica", "dueno", "super_admin"];
 
 // Lee con cliente admin (service role): mismo motivo que /caja (evita el
 // bug de "0 filas" por un blip de sesión bajo carga).
@@ -15,7 +19,7 @@ export default async function ValidacionesPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
   const { data: rolRow } = await supabase.from("profiles").select("rol").eq("id", user.id).single();
-  if (!esDireccion(rolRow?.rol)) redirect(landingPathForRole(rolRow?.rol));
+  if (!ROLES_CON_ACCESO.includes(rolRow?.rol ?? "")) redirect(landingPathForRole(rolRow?.rol));
 
   const admin = createAdminClient();
 
