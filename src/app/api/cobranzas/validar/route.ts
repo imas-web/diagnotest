@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { generarReciboSGE } from "@/lib/interpracsys/recibo";
 
 const ROLES_PERMITIDOS = ["cobranzas", "super_admin"];
 const ESTADOS = ["pendiente", "adjudicado", "diferencia", "no_corresponde"];
@@ -44,10 +45,20 @@ export async function POST(req: Request) {
 
   const { data: prev, error: prevErr } = await admin
     .from("control_cobranzas")
-    .select("id, retiro_id, estado, importe_declarado, importe_validado, detalle")
+    .select("id, retiro_id, estado, importe_declarado, importe_validado, detalle, retiro:retiro_id(fecha_operativa, metodo_pago, veterinaria:veterinaria_id(codigo))")
     .eq("id", controlId)
     .single();
   if (prevErr || !prev) return NextResponse.json({ error: "Registro no encontrado" }, { status: 404 });
+
+  type RetiroEmbed = {
+    fecha_operativa: string;
+    metodo_pago: string | null;
+    veterinaria: { codigo: string | null }[] | { codigo: string | null } | null;
+  };
+  const retiroEmbed = (Array.isArray(prev.retiro) ? prev.retiro[0] : prev.retiro) as RetiroEmbed | undefined;
+  const veterinaria = retiroEmbed
+    ? (Array.isArray(retiroEmbed.veterinaria) ? retiroEmbed.veterinaria[0] : retiroEmbed.veterinaria)
+    : null;
 
   const diferencia = validado - (Number(prev.importe_declarado) || 0);
 
@@ -77,6 +88,28 @@ export async function POST(req: Request) {
   });
   if (audErr) return NextResponse.json({ error: audErr.message }, { status: 400 });
 
+  // Al adjudicar, replicar el cobro en el SGE para que genere el recibo. El
+  // "numero" se deriva del propio control (sin guiones, máx. 20) para que un
+  // reintento (otro click en "Adjudicado") no duplique el recibo allá.
+  let recibo: { ok: boolean; info?: string } | null = null;
+  if (estado === "adjudicado" && retiroEmbed) {
+    const resultado = await generarReciboSGE({
+      codigoCliente: veterinaria?.codigo,
+      fechaOperativa: retiroEmbed.fecha_operativa,
+      importe: validado,
+      metodoPago: retiroEmbed.metodo_pago,
+      numero: controlId.replace(/-/g, "").slice(0, 20),
+    });
+    await admin.from("control_cobranzas").update({
+      recibo_sge_id: resultado.ok ? resultado.idRecibo : null,
+      recibo_sge_numero: controlId.replace(/-/g, "").slice(0, 20),
+      recibo_sge_estado: resultado.ok ? "ok" : "error",
+      recibo_sge_error: resultado.ok ? null : resultado.error,
+      recibo_sge_actualizado_at: new Date().toISOString(),
+    }).eq("id", controlId);
+    recibo = resultado.ok ? { ok: true, info: resultado.info } : { ok: false, info: resultado.error };
+  }
+
   revalidatePath("/cobranzas");
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, recibo });
 }

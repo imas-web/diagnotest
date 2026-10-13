@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { PillStatus } from "@/components/ui/PillStatus";
+import { ReintentarRecibo } from "@/components/cobranzas/ReintentarRecibo";
 import { fmtMoneySign } from "@/lib/utils/format";
 import { formatDateTime } from "@/lib/utils/dates";
 
@@ -129,7 +130,7 @@ export default async function CobranzasValidadosPage({
             <table className="w-full border-collapse text-[12px]">
               <thead>
                 <tr className="bg-gy50">
-                  {["Fecha", "Personal", "Veterinaria", "Código", "Importe", "Medio", "Observación", "Autorizado por", "Estado"].map((h) => (
+                  {["Fecha", "Personal", "Veterinaria", "Código", "Importe", "Medio", "Observación", "Autorizado por", "Estado", "Recibo SGE"].map((h) => (
                     <th key={h} className="px-3.5 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gy400 border-b border-gy200">{h}</th>
                   ))}
                 </tr>
@@ -142,7 +143,7 @@ export default async function CobranzasValidadosPage({
                       <td colSpan={4} className="px-3.5 py-2 text-[12px] font-bold text-g800 border-b border-gy200 capitalize">
                         {etiquetaFecha(dia.fecha)}
                       </td>
-                      <td colSpan={5} className="px-3.5 py-2 text-[12px] font-bold text-g800 border-b border-gy200 text-right">
+                      <td colSpan={6} className="px-3.5 py-2 text-[12px] font-bold text-g800 border-b border-gy200 text-right">
                         Total día: {fmtMoneySign(dia.total)}
                       </td>
                     </tr>
@@ -162,6 +163,22 @@ export default async function CobranzasValidadosPage({
                               <td className="px-3.5 py-2.5 text-gy600 max-w-[200px] truncate" title={c.detalle ?? ""}>{c.detalle || "—"}</td>
                               <td className="px-3.5 py-2.5 text-gy600">{c.responsable_id ? (nombrePorId.get(c.responsable_id) ?? "—") : "—"}</td>
                               <td className="px-3.5 py-2.5"><PillStatus variant="ok" label="Adjudicado" /></td>
+                              <td className="px-3.5 py-2.5">
+                                {c.recibo_sge_estado === "ok" ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-g700 bg-g50 border border-g200 rounded-full px-2 py-0.5">
+                                    <i className="ti ti-check" /> #{c.recibo_sge_id}
+                                  </span>
+                                ) : c.recibo_sge_estado === "error" ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5 max-w-[160px] truncate" title={c.recibo_sge_error ?? ""}>
+                                      <i className="ti ti-alert-triangle" /> Falló
+                                    </span>
+                                    <ReintentarRecibo controlId={c.id} importe={Number(c.importe_declarado) || 0} />
+                                  </div>
+                                ) : (
+                                  <span className="text-gy300">—</span>
+                                )}
+                              </td>
                             </tr>
                           );
                         })}
@@ -174,7 +191,7 @@ export default async function CobranzasValidadosPage({
                             <i className="ti ti-building-hospital text-[12px] mr-1 text-g500" />{g.vete}
                           </td>
                           <td className="px-3.5 py-1.5 font-bold text-g800">{fmtMoneySign(g.total)}</td>
-                          <td className="px-3.5 py-1.5 text-[11px] text-g600" colSpan={4}>
+                          <td className="px-3.5 py-1.5 text-[11px] text-g600" colSpan={5}>
                             {g.filas.length} retiro{g.filas.length !== 1 ? "s" : ""}
                           </td>
                         </tr>
@@ -183,7 +200,7 @@ export default async function CobranzasValidadosPage({
                   </Fragment>
                 ))}
                 {!controles?.length && (
-                  <tr><td colSpan={9} className="py-10 text-center text-gy400">Sin validaciones en el período</td></tr>
+                  <tr><td colSpan={10} className="py-10 text-center text-gy400">Sin validaciones en el período</td></tr>
                 )}
               </tbody>
             </table>

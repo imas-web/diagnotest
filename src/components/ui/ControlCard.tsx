@@ -395,6 +395,11 @@ export function ControlCard({ control, tipo, etapa = "obs", usuarioId }: Props) 
       setSaving(false);
       if (!res.ok) { toast("error", json.error ?? "Error al guardar"); return; }
       toast("success", "Cobranza guardada ✓");
+      if (json.recibo && !json.recibo.ok) {
+        toast("warning", `Quedó adjudicado acá, pero el recibo en Interpracsys falló: ${json.recibo.info}`);
+      } else if (json.recibo?.ok) {
+        toast("success", "Recibo generado en Interpracsys ✓");
+      }
       router.refresh();
       return;
     }
