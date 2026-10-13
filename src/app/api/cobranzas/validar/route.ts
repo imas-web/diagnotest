@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
   const { data: prev, error: prevErr } = await admin
     .from("control_cobranzas")
-    .select("id, retiro_id, estado, importe_declarado, importe_validado, detalle, retiro:retiro_id(fecha_operativa, metodo_pago, veterinaria:veterinaria_id(codigo))")
+    .select("id, retiro_id, estado, importe_declarado, importe_validado, detalle, recibo_sge_numero, retiro:retiro_id(fecha_operativa, metodo_pago, veterinaria:veterinaria_id(codigo))")
     .eq("id", controlId)
     .single();
   if (prevErr || !prev) return NextResponse.json({ error: "Registro no encontrado" }, { status: 404 });
@@ -89,20 +89,30 @@ export async function POST(req: Request) {
   if (audErr) return NextResponse.json({ error: audErr.message }, { status: 400 });
 
   // Al adjudicar, replicar el cobro en el SGE para que genere el recibo. El
-  // "numero" se deriva del propio control (sin guiones, máx. 20) para que un
-  // reintento (otro click en "Adjudicado") no duplique el recibo allá.
+  // "numero" es correlativo (0002-00000001…) y se asigna una sola vez por
+  // control: en un reintento se reutiliza el mismo, para no duplicar el
+  // recibo allá.
   let recibo: { ok: boolean; info?: string } | null = null;
   if (estado === "adjudicado" && retiroEmbed) {
+    let numeroRecibo = prev.recibo_sge_numero;
+    if (!numeroRecibo) {
+      const { data: nuevoNumero, error: numeroErr } = await admin.rpc("siguiente_recibo_sge_numero");
+      if (numeroErr || !nuevoNumero) {
+        return NextResponse.json({ error: numeroErr?.message ?? "No se pudo asignar el número de recibo" }, { status: 400 });
+      }
+      numeroRecibo = nuevoNumero;
+      await admin.from("control_cobranzas").update({ recibo_sge_numero: numeroRecibo }).eq("id", controlId);
+    }
+
     const resultado = await generarReciboSGE({
       codigoCliente: veterinaria?.codigo,
       fechaOperativa: retiroEmbed.fecha_operativa,
       importe: validado,
       metodoPago: retiroEmbed.metodo_pago,
-      numero: controlId.replace(/-/g, "").slice(0, 20),
+      numero: numeroRecibo,
     });
     await admin.from("control_cobranzas").update({
       recibo_sge_id: resultado.ok ? resultado.idRecibo : null,
-      recibo_sge_numero: controlId.replace(/-/g, "").slice(0, 20),
       recibo_sge_estado: resultado.ok ? "ok" : "error",
       recibo_sge_error: resultado.ok ? null : resultado.error,
       recibo_sge_actualizado_at: new Date().toISOString(),
