@@ -49,9 +49,11 @@ function etiquetaFecha(iso: string): string {
 //     lote desde esta bandeja (bajo), y se repiten solas en lo que vaya
 //     entrando (preanalitica_responsable_activo + trigger en la base).
 //   - Control 2: una persona controla ficha por ficha — cada ControlCard
-//     trae su propio selector, precargado con lo último que ESA CUENTA
-//     eligió (localStorage por usuarioId, ver responsableLocal.ts), sin
-//     lote: aplicar de a una evita que una cuenta le pise el campo a otra.
+//     trae su propio selector, precargado con lo último que se eligió en
+//     ESTE DISPOSITIVO/navegador (localStorage, ver responsableLocal.ts; acá
+//     SÍ se ignora la cuenta logueada, porque la misma cuenta de preanalítica
+//     la puede usar gente distinta a lo largo del día), sin lote: aplicar de
+//     a una evita que una ficha le pise el campo a otra.
 
 export function PreanaliticaBandeja({ controles, usuarioId }: { controles: AnyRecord[]; usuarioId: string }) {
   const router = useRouter();
