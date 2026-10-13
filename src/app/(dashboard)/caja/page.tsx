@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function CajaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ fecha?: string }>;
+  searchParams: Promise<{ fecha?: string; tab?: string; desde?: string; hasta?: string }>;
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -22,7 +22,7 @@ export default async function CajaPage({
   const { data: rolRow } = await supabase.from("profiles").select("rol").eq("id", user.id).single();
   if (!esDireccion(rolRow?.rol)) redirect(landingPathForRole(rolRow?.rol));
 
-  const { fecha: fechaParam } = await searchParams;
+  const { fecha: fechaParam, tab, desde, hasta } = await searchParams;
   const fecha = fechaParam || todayISO();
 
   const admin = createAdminClient();
@@ -60,12 +60,19 @@ export default async function CajaPage({
         .is("rendicion_id", null).lte("fecha_operativa", fecha)
         .range(from, to)
     ),
-    admin.from("rendiciones_caja")
-      .select("*, personal:personal_id(nombre), resuelta_por_nombre:resuelta_por(nombre)")
-      .in("estado", ["validado", "diferencia"])
-      .order("fecha_operativa", { ascending: false })
-      .order("updated_at", { ascending: false })
-      .limit(500),
+    (() => {
+      // Importante: el rango desde/hasta se filtra ACÁ (antes del límite de
+      // filas), no en el cliente — si no, con más de 500 rendiciones
+      // validadas en total, elegir un rango viejo (ej. de hace un mes)
+      // nunca mostraba nada: esas filas ya habían quedado afuera del
+      // "limit" antes de que el filtro de fecha pudiera aplicarse.
+      let q = admin.from("rendiciones_caja")
+        .select("*, personal:personal_id(nombre), resuelta_por_nombre:resuelta_por(nombre)")
+        .in("estado", ["validado", "diferencia"]);
+      if (desde) q = q.gte("fecha_operativa", desde);
+      if (hasta) q = q.lte("fecha_operativa", hasta);
+      return q.order("fecha_operativa", { ascending: false }).order("updated_at", { ascending: false }).limit(2000);
+    })(),
   ]);
 
   // Agregación por cadete + día operativo: los cadetes rinden la caja con
@@ -129,7 +136,9 @@ export default async function CajaPage({
     <div>
       <Topbar title="Control de Caja — Logística" />
       <div className="p-6 space-y-4">
-        <ControlCaja fecha={fecha} items={items} revisados={revisados} />
+        <ControlCaja fecha={fecha} items={items} revisados={revisados}
+          initialTab={tab === "revisado" ? "revisado" : "pendientes"}
+          initialDesde={desde ?? ""} initialHasta={hasta ?? ""} />
       </div>
     </div>
   );

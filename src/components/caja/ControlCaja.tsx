@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/components/ui/ToastNotification";
 import { fmtMoneySign } from "@/lib/utils/format";
@@ -41,9 +41,33 @@ export interface RevisadoRow {
 
 type Tab = "pendientes" | "revisado";
 
-export function ControlCaja({ fecha, items, revisados }: { fecha: string; items: RendicionCadete[]; revisados: RevisadoRow[] }) {
+export function ControlCaja({ fecha, items, revisados, initialTab, initialDesde, initialHasta }: {
+  fecha: string; items: RendicionCadete[]; revisados: RevisadoRow[];
+  initialTab: Tab; initialDesde: string; initialHasta: string;
+}) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("pendientes");
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const [desde, setDesde] = useState(initialDesde);
+  const [hasta, setHasta] = useState(initialHasta);
+  // El servidor es quien filtra desde/hasta (ver page.tsx) — al navegar, estos
+  // efectos sincronizan el estado local con lo que vino en la URL.
+  useEffect(() => setTab(initialTab), [initialTab]);
+  useEffect(() => setDesde(initialDesde), [initialDesde]);
+  useEffect(() => setHasta(initialHasta), [initialHasta]);
+
+  // Arma la URL preservando lo que no cambia — así, por ejemplo, cambiar la
+  // fecha de arriba no hace perder el rango elegido en "Revisado", ni viceversa.
+  function navegar(overrides: { fecha?: string; desde?: string; hasta?: string }) {
+    const params = new URLSearchParams();
+    const f = overrides.fecha ?? fecha;
+    const d = overrides.desde ?? desde;
+    const h = overrides.hasta ?? hasta;
+    if (f) params.set("fecha", f);
+    if (tab === "revisado") params.set("tab", "revisado");
+    if (d) params.set("desde", d);
+    if (h) params.set("hasta", h);
+    router.push(`/caja?${params.toString()}`);
+  }
 
   // Pendientes de revisión: cadetes de la fecha sin rendición validada.
   const pendientes = items.filter((i) => !i.rendicion || i.rendicion.estado === "pendiente");
@@ -59,7 +83,7 @@ export function ControlCaja({ fecha, items, revisados }: { fecha: string; items:
         <div className="flex items-center gap-2">
           <label className="text-[11px] font-semibold uppercase tracking-wide text-gy400">Fecha</label>
           <input type="date" defaultValue={fecha}
-            onChange={(e) => router.push(`/caja?fecha=${e.target.value}`)}
+            onChange={(e) => navegar({ fecha: e.target.value })}
             className="px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[12px] bg-gy50 focus:outline-none focus:border-g500" />
         </div>
         <div className="ml-auto flex items-center gap-4 text-[12px]">
@@ -92,34 +116,35 @@ export function ControlCaja({ fecha, items, revisados }: { fecha: string; items:
           )}
         </div>
       ) : (
-        <RevisadoTabla rows={revisados} />
+        <RevisadoTabla rows={revisados} desde={desde} hasta={hasta}
+          onDesde={(v) => navegar({ desde: v })} onHasta={(v) => navegar({ hasta: v })} />
       )}
     </div>
   );
 }
 
-function RevisadoTabla({ rows }: { rows: RevisadoRow[] }) {
+function RevisadoTabla({ rows, desde, hasta, onDesde, onHasta }: {
+  rows: RevisadoRow[]; desde: string; hasta: string;
+  onDesde: (v: string) => void; onHasta: (v: string) => void;
+}) {
   const fmtDia = (f: string) => {
     const [y, m, d] = f.split("-");
     return `${d}/${m}/${y.slice(2)}`;
   };
 
   const [cadete, setCadete] = useState("");
-  const [desde, setDesde] = useState("");
-  const [hasta, setHasta] = useState("");
   // Por defecto, esta tabla arranca mostrando justo lo que hay que resolver:
   // solo diferencias, sin las que ya se marcaron como resueltas. Un par de
   // checks la vuelven a abrir a todo el historial (validados + resueltas).
   const [soloDif, setSoloDif] = useState(true);
   const [ocultarResueltas, setOcultarResueltas] = useState(true);
 
-  // Cadetes únicos para el desplegable.
+  // Cadetes únicos para el desplegable. desde/hasta ya vienen filtrados del
+  // servidor (ver ControlCaja/page.tsx) — acá solo se filtra cadete/estado.
   const cadetes = Array.from(new Set(rows.map((r) => r.nombre))).sort((a, b) => a.localeCompare(b, "es"));
 
   const filtradas = rows.filter((r) => {
     if (cadete && r.nombre !== cadete) return false;
-    if (desde && r.fecha < desde) return false;
-    if (hasta && r.fecha > hasta) return false;
     if (soloDif && r.estado !== "diferencia") return false;
     if (ocultarResueltas && r.estado === "diferencia" && r.resuelta) return false;
     return true;
@@ -145,11 +170,11 @@ function RevisadoTabla({ rows }: { rows: RevisadoRow[] }) {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-semibold uppercase tracking-wide text-gy400">Desde</label>
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={inputCls} />
+          <input type="date" value={desde} onChange={(e) => onDesde(e.target.value)} className={inputCls} />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-semibold uppercase tracking-wide text-gy400">Hasta</label>
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={inputCls} />
+          <input type="date" value={hasta} onChange={(e) => onHasta(e.target.value)} className={inputCls} />
         </div>
         <label className="flex items-center gap-1.5 text-[12px] text-gy600 cursor-pointer py-1.5">
           <input type="checkbox" checked={soloDif} onChange={(e) => setSoloDif(e.target.checked)} className="accent-red-600" />
@@ -160,7 +185,7 @@ function RevisadoTabla({ rows }: { rows: RevisadoRow[] }) {
           Ocultar resueltas
         </label>
         {hayFiltro && (
-          <button onClick={() => { setCadete(""); setDesde(""); setHasta(""); setSoloDif(true); setOcultarResueltas(true); }}
+          <button onClick={() => { setCadete(""); onDesde(""); onHasta(""); setSoloDif(true); setOcultarResueltas(true); }}
             className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] font-medium text-gy600 hover:text-gy900">
             <i className="ti ti-x text-[13px]" /> Limpiar
           </button>
