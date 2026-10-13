@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatCard } from "@/components/ui/StatCard";
-import { landingPathForRole } from "@/lib/utils/roles";
+import { esDireccion, landingPathForRole } from "@/lib/utils/roles";
 import { ValidacionCadetes, type CajaValidacion } from "@/components/caja/ValidacionCadetes";
 
 // Además de Dirección, el jefe de logística controla directamente a los
@@ -90,7 +90,7 @@ export default async function ValidacionesPage() {
           <StatCard label="Ya validaron" value={cajas.length - pendientes} accent="green" />
         </div>
 
-        <ValidacionCadetes cajas={cajas} />
+        <ValidacionCadetes cajas={cajas} puedeValidarMasivo={esDireccion(rolRow?.rol)} />
       </div>
     </div>
   );
