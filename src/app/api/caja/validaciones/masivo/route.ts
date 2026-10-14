@@ -3,10 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { esDireccion } from "@/lib/utils/roles";
 
-// Validación masiva "OK, coincide" — misma acción que haría cada cadete desde
-// su Resumen, pero disparada una sola vez por Dirección para arrancar la
-// dinámica de validación diaria desde una fecha de corte en limpio (sin tener
-// que insistirle a nadie por cajas previas a la capacitación).
+// Validación "OK, coincide" de una o varias cajas puntuales (selección
+// manual en /caja/validaciones) — misma acción que haría cada cadete desde
+// su Resumen, pero disparada por Dirección para los casos en que no hace
+// falta insistirle (ej. arrancar en limpio antes de una capacitación).
 async function requireDireccion() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -16,9 +16,18 @@ async function requireDireccion() {
   return { user };
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   const guard = await requireDireccion();
   if ("error" in guard) return NextResponse.json({ error: guard.error }, { status: guard.status });
+
+  // Si viene "items", valida solo esas cajas puntuales (selección manual).
+  // Sin body (o sin items), valida todas las pendientes — se deja por si
+  // alguna integración vieja llama sin seleccionar nada en particular.
+  let items: { personalId: string; fecha: string }[] | undefined;
+  try {
+    const body = await req.json();
+    if (Array.isArray(body?.items)) items = body.items;
+  } catch { /* sin body: valida todas */ }
 
   const admin = createAdminClient();
 
@@ -56,11 +65,18 @@ export async function POST() {
     if (!validadas.has(key)) pendientes.set(key, r);
   }
 
+  if (items) {
+    const seleccionadas = new Set(items.map((i) => `${i.personalId}|${i.fecha}`));
+    for (const key of Array.from(pendientes.keys())) {
+      if (!seleccionadas.has(key)) pendientes.delete(key);
+    }
+  }
+
   const filas = Array.from(pendientes.values()).map((p) => ({
     id: crypto.randomUUID(),
     personal_id: p.personal_id,
     tipo: "diferencia_caja" as const,
-    descripcion: "Diferencia de caja (OK — coincide, validación inicial previa a capacitación)",
+    descripcion: "Diferencia de caja (OK — coincide, validado por Dirección)",
     monto: 0,
     fecha_operativa: p.fecha_operativa,
     comprobante_url: null,
@@ -76,7 +92,7 @@ export async function POST() {
     await admin.from("auditoria").insert({
       entidad: "gastos",
       entidad_id: "validacion_masiva",
-      accion: "Validación masiva de caja (previa a capacitación)",
+      accion: "Validación de caja por Dirección",
       campo_modificado: "diferencia_caja",
       valor_anterior: null,
       valor_nuevo: `${filas.length} caja(s) marcadas OK — coincide`,
