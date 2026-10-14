@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getMyProfile } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { withTimeout } from "@/lib/supabase/withTimeout";
 import { Topbar } from "@/components/layout/Topbar";
 import { PreanaliticaBandeja } from "@/components/preanalitica/PreanaliticaBandeja";
 import { MuestrasPorCadete } from "@/components/caja/MuestrasPorCadete";
@@ -57,14 +58,27 @@ export default async function PreanaliticaPage() {
   // eso como "0 pendientes", preanalítica cree que terminó. Reintentamos y
   // cruzamos con un conteo liviano; solo aceptamos el resultado si no hubo error
   // y la cantidad traída coincide con el conteo (o el conteo no está disponible).
+  // Cada intento con su propio timeout: si Supabase no responde, en vez de
+  // colgarse hasta el límite duro de Vercel fallamos rápido y reintentamos.
   let controles: Record<string, unknown>[] = [];
   for (let intento = 0; intento < 3; intento++) {
-    const [{ data, error }, { count }] = await Promise.all([lista(), conteo()]);
-    controles = (data ?? []) as Record<string, unknown>[];
-    if (!error && (count == null || controles.length >= count)) break;
+    try {
+      const [{ data, error }, { count }] = await Promise.all([
+        withTimeout(lista(), 15000),
+        withTimeout(conteo(), 15000),
+      ]);
+      controles = (data ?? []) as Record<string, unknown>[];
+      if (!error && (count == null || controles.length >= count)) break;
+    } catch {
+      // timeout o error de red: se reintenta en la siguiente vuelta
+    }
     if (intento < 2) await new Promise((r) => setTimeout(r, 200));
   }
-  await adjuntarIndicacionesPedido(supabase, controles);
+  try {
+    await withTimeout(adjuntarIndicacionesPedido(supabase, controles), 10000);
+  } catch {
+    // no crítico: la bandeja se muestra igual, solo sin el detalle del pedido
+  }
 
   return (
     <div>

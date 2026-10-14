@@ -1,7 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient, getMyProfile } from "@/lib/supabase/server";
+import { withTimeout } from "@/lib/supabase/withTimeout";
 import { MobileHome } from "@/components/mobile/MobileHome";
 import { todayISO } from "@/lib/utils/dates";
+
+// Sin esto, si Supabase responde lento cualquiera de estas consultas se
+// cuelga hasta el límite duro de Vercel (300s) en vez de fallar rápido y
+// mostrar la pantalla con lo que sí se pudo traer.
+const DB_TIMEOUT = 15000;
 
 export default async function InicioPage() {
   const { user, profile } = await getMyProfile();
@@ -12,11 +18,16 @@ export default async function InicioPage() {
 
   const supabase = await createClient();
 
-  const { data: personal } = await supabase
-    .from("personal")
-    .select("id, nombre, zona:zona_base_id(nombre)")
-    .eq("profile_id", user.id)
-    .single();
+  let personal: { id: string; nombre: string; zona: unknown } | null = null;
+  try {
+    const { data } = await withTimeout(
+      supabase.from("personal").select("id, nombre, zona:zona_base_id(nombre)").eq("profile_id", user.id).single(),
+      DB_TIMEOUT
+    );
+    personal = data;
+  } catch {
+    // Supabase no respondió a tiempo: seguimos sin datos de personal en vez de colgar la página.
+  }
 
   const personalId = personal?.id ?? "";
   const zonaNombre = (personal?.zona as { nombre?: string } | null)?.nombre ?? "Sin zona";
@@ -27,82 +38,103 @@ export default async function InicioPage() {
   const vets: VetRow[] = [];
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
-      .from("veterinarias")
-      .select("id, codigo, nombre, telefono, direccion")
-      .eq("activa", true)
-      .order("nombre")
-      .range(from, from + PAGE - 1);
-    if (error || !data?.length) break;
-    vets.push(...(data as VetRow[]));
-    if (data.length < PAGE) break;
+    try {
+      const { data, error } = await withTimeout(
+        supabase
+          .from("veterinarias")
+          .select("id, codigo, nombre, telefono, direccion")
+          .eq("activa", true)
+          .order("nombre")
+          .range(from, from + PAGE - 1),
+        DB_TIMEOUT
+      );
+      if (error || !data?.length) break;
+      vets.push(...(data as VetRow[]));
+      if (data.length < PAGE) break;
+    } catch {
+      break; // timeout: seguimos con lo que ya se trajo
+    }
   }
 
   let pedidos: PedidoMobile[] = [];
   if (personalId) {
-    const { data } = await supabase
-      .from("pedidos_retiro")
-      .select(`
-        id, estado, urgente, detalle, materiales, created_at, fecha_limite,
-        veterinaria:veterinaria_id(id, nombre, codigo)
-      `)
-      .eq("personal_asignado_id", personalId)
-      .in("estado", ["asignado", "en_proceso"])
-      .order("created_at", { ascending: true });
+    try {
+      const { data } = await withTimeout(
+        supabase
+          .from("pedidos_retiro")
+          .select(`
+            id, estado, urgente, detalle, materiales, created_at, fecha_limite,
+            veterinaria:veterinaria_id(id, nombre, codigo)
+          `)
+          .eq("personal_asignado_id", personalId)
+          .in("estado", ["asignado", "en_proceso"])
+          .order("created_at", { ascending: true }),
+        DB_TIMEOUT
+      );
 
-    pedidos = (data ?? []).map((p) => {
-      const vet = p.veterinaria as { id?: string; nombre?: string; codigo?: string } | null;
-      return {
-        id: p.id,
-        estado: p.estado,
-        urgente: p.urgente,
-        detalle: p.detalle,
-        materiales: (p.materiales as string[] | null) ?? null,
-        created_at: p.created_at,
-        fecha_limite: p.fecha_limite,
-        veterinaria_id: vet?.id ?? null,
-        veterinaria_nombre: vet?.nombre ?? "Veterinaria",
-        veterinaria_codigo: vet?.codigo ?? "",
-      };
-    });
+      pedidos = (data ?? []).map((p) => {
+        const vet = p.veterinaria as { id?: string; nombre?: string; codigo?: string } | null;
+        return {
+          id: p.id,
+          estado: p.estado,
+          urgente: p.urgente,
+          detalle: p.detalle,
+          materiales: (p.materiales as string[] | null) ?? null,
+          created_at: p.created_at,
+          fecha_limite: p.fecha_limite,
+          veterinaria_id: vet?.id ?? null,
+          veterinaria_nombre: vet?.nombre ?? "Veterinaria",
+          veterinaria_codigo: vet?.codigo ?? "",
+        };
+      });
+    } catch {
+      // timeout: la solapa de pedidos queda vacía en vez de colgar toda la página
+    }
   }
 
   // Retiros del día de este cadete — alimentan la solapa "Resumen".
   let retirosHoy: RetiroResumen[] = [];
   if (personalId) {
-    const { data } = await supabase
-      .from("retiros")
-      .select(`
-        id, veterinaria_id, veterinaria_texto_original, codigo_original, importe_declarado,
-        cantidad_muestras, metodo_pago, comentarios, urgente, timestamp_carga,
-        control_preanalitica:control_preanalitica(estado),
-        control_cobranzas:control_cobranzas(estado)
-      `)
-      .eq("personal_id", personalId)
-      .eq("fecha_operativa", todayISO())
-      .eq("anulado", false)
-      .neq("estado", "duplicado_sospechoso" as never)
-      .order("timestamp_carga", { ascending: false });
+    try {
+      const { data } = await withTimeout(
+        supabase
+          .from("retiros")
+          .select(`
+            id, veterinaria_id, veterinaria_texto_original, codigo_original, importe_declarado,
+            cantidad_muestras, metodo_pago, comentarios, urgente, timestamp_carga,
+            control_preanalitica:control_preanalitica(estado),
+            control_cobranzas:control_cobranzas(estado)
+          `)
+          .eq("personal_id", personalId)
+          .eq("fecha_operativa", todayISO())
+          .eq("anulado", false)
+          .neq("estado", "duplicado_sospechoso" as never)
+          .order("timestamp_carga", { ascending: false }),
+        DB_TIMEOUT
+      );
 
-    retirosHoy = (data ?? []).map((r) => {
-      const pre = (Array.isArray(r.control_preanalitica) ? r.control_preanalitica[0] : r.control_preanalitica) as { estado?: string } | null;
-      const cob = (Array.isArray(r.control_cobranzas) ? r.control_cobranzas[0] : r.control_cobranzas) as { estado?: string } | null;
-      // Editable por el cadete solo mientras nadie lo procesó: pendiente (o sin
-      // control) en preanalítica Y en cobranzas.
-      const editable = (!pre || pre.estado === "pendiente") && (!cob || cob.estado === "pendiente");
-      return {
-        id: r.id,
-        veterinaria: r.veterinaria_texto_original ?? "Veterinaria",
-        codigo: r.codigo_original ?? "",
-        importe: Number(r.importe_declarado ?? 0),
-        muestras: Number(r.cantidad_muestras ?? 0),
-        veterinariaId: r.veterinaria_id ?? null,
-        metodoPago: r.metodo_pago ?? null,
-        comentarios: r.comentarios ?? null,
-        urgente: !!r.urgente,
-        editable,
-      };
-    });
+      retirosHoy = (data ?? []).map((r) => {
+        const pre = (Array.isArray(r.control_preanalitica) ? r.control_preanalitica[0] : r.control_preanalitica) as { estado?: string } | null;
+        const cob = (Array.isArray(r.control_cobranzas) ? r.control_cobranzas[0] : r.control_cobranzas) as { estado?: string } | null;
+        // Editable por el cadete solo mientras nadie lo procesó: pendiente (o sin
+        // control) en preanalítica Y en cobranzas.
+        const editable = (!pre || pre.estado === "pendiente") && (!cob || cob.estado === "pendiente");
+        return {
+          id: r.id,
+          veterinaria: r.veterinaria_texto_original ?? "Veterinaria",
+          codigo: r.codigo_original ?? "",
+          importe: Number(r.importe_declarado ?? 0),
+          muestras: Number(r.cantidad_muestras ?? 0),
+          veterinariaId: r.veterinaria_id ?? null,
+          metodoPago: r.metodo_pago ?? null,
+          comentarios: r.comentarios ?? null,
+          urgente: !!r.urgente,
+          editable,
+        };
+      });
+    } catch {
+      // timeout: el resumen del día queda vacío en vez de colgar toda la página
+    }
   }
 
   // Gastos de la caja abierta de hoy (sin rendir todavía) — para mostrarle al
@@ -110,13 +142,20 @@ export default async function InicioPage() {
   // estos gastos), sin que tenga que hacer la cuenta a mano.
   let totalGastosHoy = 0;
   if (personalId) {
-    const { data } = await supabase
-      .from("gastos")
-      .select("monto")
-      .eq("personal_id", personalId)
-      .eq("fecha_operativa", todayISO())
-      .is("rendicion_id", null);
-    totalGastosHoy = (data ?? []).reduce((s, g) => s + Number(g.monto ?? 0), 0);
+    try {
+      const { data } = await withTimeout(
+        supabase
+          .from("gastos")
+          .select("monto")
+          .eq("personal_id", personalId)
+          .eq("fecha_operativa", todayISO())
+          .is("rendicion_id", null),
+        DB_TIMEOUT
+      );
+      totalGastosHoy = (data ?? []).reduce((s, g) => s + Number(g.monto ?? 0), 0);
+    } catch {
+      // timeout: queda en 0 en vez de colgar toda la página
+    }
   }
 
   return (
