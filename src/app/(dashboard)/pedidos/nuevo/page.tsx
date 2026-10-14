@@ -1,19 +1,12 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getMyProfile } from "@/lib/supabase/server";
 import { Topbar } from "@/components/layout/Topbar";
 import { NuevoPedidoForm } from "@/components/forms/NuevoPedidoForm";
 import { PillStatus } from "@/components/ui/PillStatus";
 
 export default async function NuevoPedidoPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profile } = await getMyProfile();
   if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, rol")
-    .eq("id", user.id)
-    .single();
 
   // Solo el jefe de logística (o dirección) puede crear pedidos.
   const canCreate = ["jefe_logistica", "super_admin", "dueno"].includes(profile?.rol ?? "");

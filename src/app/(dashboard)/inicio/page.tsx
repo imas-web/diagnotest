@@ -1,21 +1,16 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getMyProfile } from "@/lib/supabase/server";
 import { MobileHome } from "@/components/mobile/MobileHome";
 import { todayISO } from "@/lib/utils/dates";
 
 export default async function InicioPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profile } = await getMyProfile();
   if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, nombre, rol")
-    .eq("id", user.id)
-    .single();
 
   // Solo personal de logística usa la vista mobile; el resto al dashboard
   if (profile?.rol !== "personal_logistica") redirect("/dashboard");
+
+  const supabase = await createClient();
 
   const { data: personal } = await supabase
     .from("personal")

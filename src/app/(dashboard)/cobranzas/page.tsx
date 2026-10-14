@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getMyProfile } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatCard } from "@/components/ui/StatCard";
@@ -26,11 +26,9 @@ export default async function CobranzasPage({
 }: {
   searchParams: Promise<{ q?: string; fecha?: string; cadete?: string; ver?: string }>;
 }) {
-  // Guard de rol con la sesión; la LECTURA va con admin (rápida, sin RLS).
-  const auth = await createClient();
-  const { data: { user } } = await auth.auth.getUser();
+  // Guard de rol; la LECTURA va con admin (rápida, sin RLS).
+  const { user, profile: perfil } = await getMyProfile();
   if (!user) redirect("/login");
-  const { data: perfil } = await auth.from("profiles").select("rol").eq("id", user.id).single();
   if (!perfil || !ROLES.includes(perfil.rol)) redirect(landingPathForRole(perfil?.rol));
 
   const { q, fecha, cadete, ver } = await searchParams;

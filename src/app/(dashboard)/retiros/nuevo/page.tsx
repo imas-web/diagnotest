@@ -1,21 +1,15 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getMyProfile } from "@/lib/supabase/server";
 import { Topbar } from "@/components/layout/Topbar";
 import { RetiroForm } from "@/components/forms/RetiroForm";
 import { PillStatus } from "@/components/ui/PillStatus";
 import { formatDateTime } from "@/lib/utils/dates";
 
 export default async function NuevoRetiroPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profile } = await getMyProfile();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, rol")
-    .eq("id", user.id)
-    .single();
-
+  const supabase = await createClient();
   let personalId: string | undefined;
   if (profile?.rol === "personal_logistica") {
     const { data: personal } = await supabase

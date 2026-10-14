@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getMyProfile } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { PreanaliticaBandeja } from "@/components/preanalitica/PreanaliticaBandeja";
@@ -15,11 +15,9 @@ export const revalidate = 10;
 const ROLES_BANDEJA = ["preanalitica", "dueno", "super_admin"];
 
 export default async function PreanaliticaPage() {
-  // Auth + rol con el cliente de sesión (RLS). Solo para el guard de acceso.
-  const auth = await createClient();
-  const { data: { user } } = await auth.auth.getUser();
+  // Auth + rol. Solo para el guard de acceso.
+  const { user, profile: perfil } = await getMyProfile();
   if (!user) redirect("/login");
-  const { data: perfil } = await auth.from("profiles").select("rol").eq("id", user.id).single();
   if (!perfil || !ROLES_BANDEJA.includes(perfil.rol)) redirect(landingPathForRole(perfil?.rol));
 
   // La bandeja se LEE con el cliente admin (service role): no depende de la

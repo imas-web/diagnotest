@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getMyProfile } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { esDireccion, landingPathForRole } from "@/lib/utils/roles";
@@ -16,10 +16,8 @@ export default async function CajaPage({
 }: {
   searchParams: Promise<{ fecha?: string; tab?: string; desde?: string; hasta?: string }>;
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profile: rolRow } = await getMyProfile();
   if (!user) redirect("/login");
-  const { data: rolRow } = await supabase.from("profiles").select("rol").eq("id", user.id).single();
   if (!esDireccion(rolRow?.rol)) redirect(landingPathForRole(rolRow?.rol));
 
   const { fecha: fechaParam, tab, desde, hasta } = await searchParams;

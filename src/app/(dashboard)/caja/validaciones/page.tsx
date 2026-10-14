@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getMyProfile } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatCard } from "@/components/ui/StatCard";
@@ -15,10 +15,8 @@ const ROLES_CON_ACCESO = ["jefe_logistica", "dueno", "super_admin"];
 export const dynamic = "force-dynamic";
 
 export default async function ValidacionesPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profile: rolRow } = await getMyProfile();
   if (!user) redirect("/login");
-  const { data: rolRow } = await supabase.from("profiles").select("rol").eq("id", user.id).single();
   if (!ROLES_CON_ACCESO.includes(rolRow?.rol ?? "")) redirect(landingPathForRole(rolRow?.rol));
 
   const admin = createAdminClient();

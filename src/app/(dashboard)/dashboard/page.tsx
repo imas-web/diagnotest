@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getMyProfile } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
@@ -53,12 +53,9 @@ function isoOfDayIndex(dayIdx: number): string {
 }
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-
   // El Dashboard Operativo es exclusivo de dirección; otros roles van a su landing.
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profile: rolRow } = await getMyProfile();
   if (!user) redirect("/login");
-  const { data: rolRow } = await supabase.from("profiles").select("rol").eq("id", user.id).single();
   if (!esDireccion(rolRow?.rol)) redirect(landingPathForRole(rolRow?.rol));
 
   // Lecturas pesadas con service role (mismo patrón que preanalítica/cobranzas

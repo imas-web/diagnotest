@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getMyProfile } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { ChatApp } from "@/components/chat/ChatApp";
@@ -9,11 +9,8 @@ import { SELECT_CONVERSACIONES } from "@/components/chat/chatShared";
 // Los cadetes de logística tienen su propia UI mobile y no forman parte de
 // esta primera etapa del chat interno (DiagnoLis).
 export default async function ChatPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profile: me } = await getMyProfile();
   if (!user) redirect("/login");
-
-  const { data: me } = await supabase.from("profiles").select("id, nombre, email, rol").eq("id", user.id).single();
   if (!me || me.rol === "personal_logistica") redirect(landingPathForRole(me?.rol));
 
   const admin = createAdminClient();
@@ -51,7 +48,7 @@ export default async function ChatPage() {
   // Últimos 200 mensajes de todas las conversaciones: alcanza de sobra para
   // mostrar la vista previa (el último mensaje) de cada una en la lista.
   const { data: ultimosMensajes } = conversacionIds.length
-    ? await supabase
+    ? await admin
         .from("chat_mensajes")
         .select("conversacion_id, contenido, adjunto_tipo, remitente_id, created_at")
         .in("conversacion_id", conversacionIds)

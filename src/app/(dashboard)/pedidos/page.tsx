@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getMyProfile } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatCard } from "@/components/ui/StatCard";
@@ -15,11 +15,10 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 export default async function PedidosPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profile } = await getMyProfile();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase.from("profiles").select("rol").eq("id", user.id).single();
+  const supabase = await createClient();
   const isPersonal = profile?.rol === "personal_logistica";
   const esStaff = ["jefe_logistica", "dueno", "super_admin"].includes(profile?.rol ?? "");
 

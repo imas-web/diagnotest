@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getMyProfile } from "@/lib/supabase/server";
 import { Topbar } from "@/components/layout/Topbar";
 import { PillStatus } from "@/components/ui/PillStatus";
 import { StatCard } from "@/components/ui/StatCard";
@@ -28,11 +28,10 @@ export default async function RetirosPage({
 }: {
   searchParams: Promise<{ f?: string; desde?: string; hasta?: string; cod?: string }>;
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profile } = await getMyProfile();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase.from("profiles").select("rol").eq("id", user.id).single();
+  const supabase = await createClient();
   const isPersonal = profile?.rol === "personal_logistica";
   // Dirección y super admin pueden eliminar registros manualmente.
   const canDelete = profile?.rol === "dueno" || profile?.rol === "super_admin";

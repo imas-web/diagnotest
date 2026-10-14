@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { AuthUnknownError } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
@@ -54,3 +55,25 @@ export async function createClient() {
 
   return supabase;
 }
+
+// El layout del dashboard verifica la sesión, y CADA página de abajo la
+// vuelve a verificar por su cuenta — dos viajes a Supabase por cada
+// navegación, para lo mismo, multiplicado por toda la gente usando el
+// sistema a la vez. React cache() hace que, dentro de UN mismo request,
+// todos los que llamen a esta función compartan la misma llamada real (solo
+// se ejecuta una vez) en vez de repetirla. Usar esto (en vez de
+// supabase.auth.getUser() directo) en el layout y en las páginas de más
+// tráfico reduce esa carga a la mitad.
+export const getAuthUser = cache(async () => {
+  const supabase = await createClient();
+  return supabase.auth.getUser();
+});
+
+// Mismo motivo: el rol del perfil se repite en casi todas las pantallas.
+export const getMyProfile = cache(async () => {
+  const { data: { user } } = await getAuthUser();
+  if (!user) return { user: null, profile: null };
+  const supabase = await createClient();
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+  return { user, profile };
+});
