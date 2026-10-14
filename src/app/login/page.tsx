@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { landingPathForRole } from "@/lib/utils/roles";
+import { withTimeout } from "@/lib/supabase/withTimeout";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -18,10 +19,21 @@ export default function LoginPage() {
     setError("");
 
     const supabase = createClient();
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    // Si Supabase tarda en responder (lo vimos pasar: el servicio de auth
+    // devolviendo 504), sin un límite propio el botón queda girando en
+    // "Ingresando…" para siempre, sin aviso ni forma de reintentar.
+    let data: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"];
+    let authError: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["error"];
+    try {
+      ({ data, error: authError } = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password }),
+        15000
+      ));
+    } catch {
+      setError("No se pudo conectar. Probá de nuevo en unos segundos.");
+      setLoading(false);
+      return;
+    }
 
     if (authError || !data.user) {
       setError("Email o contraseña incorrectos");
@@ -29,11 +41,17 @@ export default function LoginPage() {
       return;
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("rol, activo")
-      .eq("id", data.user.id)
-      .single();
+    let profile: { rol: string; activo: boolean } | null;
+    try {
+      ({ data: profile } = await withTimeout(
+        supabase.from("profiles").select("rol, activo").eq("id", data.user.id).single(),
+        15000
+      ));
+    } catch {
+      setError("No se pudo conectar. Probá de nuevo en unos segundos.");
+      setLoading(false);
+      return;
+    }
 
     if (!profile?.activo) {
       setError("Tu cuenta está desactivada. Contactá al administrador.");
