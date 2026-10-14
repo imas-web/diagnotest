@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { landingPathForRole } from "@/lib/utils/roles";
+import { withTimeout } from "@/lib/supabase/withTimeout";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -27,25 +28,27 @@ export async function updateSession(request: NextRequest) {
   );
 
   // Cada request (página, RSC, API) corre este middleware por separado, cada
-  // uno con su propio cliente — si el navegador dispara varios al mismo
-  // tiempo justo cuando el token está por vencer, más de uno intenta
-  // refrescarlo con la misma cookie y Supabase rechaza los demás con un 409
-  // "too many concurrent token refresh requests". Eso no significa que la
-  // sesión sea inválida (otro request en paralelo sí la está refrescando),
-  // así que no hay que tratarlo como "no hay usuario" ni cortar el request:
-  // se reintenta una vez y, si persiste, se deja pasar con las cookies
-  // actuales — la próxima página ya va a tener el token renovado.
+  // uno con su propio cliente. Dos formas en que esto puede colgar o cortar
+  // el acceso sin que la sesión sea realmente inválida:
+  //  1) Varios al mismo tiempo justo cuando el token está por vencer intentan
+  //     refrescarlo con la misma cookie — Supabase rechaza los demás con un
+  //     409 "too many concurrent token refresh requests".
+  //  2) El endpoint de auth de Supabase tarda o no responde — sin límite
+  //     propio, CADA request queda colgado hasta los 25s duros de Vercel acá
+  //     en middleware, lo que se siente como "se cayó todo el sitio".
+  // Por eso cada intento tiene un timeout corto (bien por debajo del límite
+  // de 25s) y se reintenta una sola vez antes de dejar pasar el request con
+  // las cookies actuales, en vez de redirigir a /login de pura mala suerte.
   async function getUserSinCortar() {
     try {
-      const { data } = await supabase.auth.getUser();
+      const { data } = await withTimeout(supabase.auth.getUser(), 5000);
       return data.user;
     } catch {
-      await new Promise((r) => setTimeout(r, 200));
       try {
-        const { data } = await supabase.auth.getUser();
+        const { data } = await withTimeout(supabase.auth.getUser(), 5000);
         return data.user;
       } catch {
-        return undefined; // sigue en conflicto: se deja pasar más abajo
+        return undefined; // sigue sin responder: se deja pasar más abajo
       }
     }
   }
@@ -62,14 +65,17 @@ export async function updateSession(request: NextRequest) {
 
   if (user && pathname === "/login") {
     // Cada rol aterriza en su propia página (el Dashboard es solo de dirección).
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("rol")
-      .eq("id", user.id)
-      .single();
-    const url = request.nextUrl.clone();
-    url.pathname = landingPathForRole(profile?.rol);
-    return NextResponse.redirect(url);
+    try {
+      const { data: profile } = await withTimeout(
+        supabase.from("profiles").select("rol").eq("id", user.id).single(),
+        5000
+      );
+      const url = request.nextUrl.clone();
+      url.pathname = landingPathForRole(profile?.rol);
+      return NextResponse.redirect(url);
+    } catch {
+      return supabaseResponse; // no se pudo resolver el rol a tiempo: se deja en /login
+    }
   }
 
   return supabaseResponse;

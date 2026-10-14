@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { AuthUnknownError } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { withTimeout } from "@/lib/supabase/withTimeout";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -24,27 +25,28 @@ export async function createClient() {
     }
   );
 
-  // Cada página/ruta crea su propio cliente y, si el navegador dispara varias
-  // en simultáneo justo cuando el token está por vencer, más de una intenta
-  // refrescarlo con la misma cookie — Supabase rechaza las demás con un 409
-  // "too many concurrent token refresh requests" (a veces como error, a
-  // veces directamente tirando la excepción). No es que la sesión sea
-  // inválida — otro request en paralelo la está refrescando — así que en vez
-  // de dejar que las ~60 páginas que llaman getUser() traten esto como
-  // "no hay usuario" y corten el acceso, se reintenta acá una sola vez.
+  // Cada página/ruta crea su propio cliente y llama getUser() por separado.
+  // Dos formas conocidas en que esto se cuelga o corta el acceso sin que la
+  // sesión sea realmente inválida:
+  //  1) Varios requests en simultáneo justo cuando el token está por vencer
+  //     intentan refrescarlo con la misma cookie — Supabase rechaza los
+  //     demás con un 409 "too many concurrent token refresh requests".
+  //  2) El endpoint de auth de Supabase tarda o no responde — sin límite
+  //     propio, el request entero queda colgado hasta el timeout duro de
+  //     Vercel (300s en una función), lo que se ve como "se cayó todo".
+  // Por eso cada intento tiene un timeout corto y se reintenta una sola vez
+  // antes de degradar con gracia (nunca tirar la excepción: rompería las
+  // ~60 páginas que llaman getUser() esperando solo { data, error }).
   const getUserOriginal = supabase.auth.getUser.bind(supabase.auth);
   supabase.auth.getUser = async (...args: Parameters<typeof getUserOriginal>) => {
     try {
-      const res = await getUserOriginal(...args);
+      const res = await withTimeout(getUserOriginal(...args), 6000);
       if (res.error?.status !== 409) return res;
     } catch { /* sigue al reintento de abajo */ }
     await new Promise((r) => setTimeout(r, 200));
     try {
-      return await getUserOriginal(...args);
+      return await withTimeout(getUserOriginal(...args), 6000);
     } catch (error) {
-      // Seguir en conflicto tras el reintento: no tirar la excepción (eso
-      // rompería la página entera) — se devuelve "sin usuario" para que cada
-      // pantalla haga su fallback normal (típicamente redirigir a /login).
       const message = error instanceof Error ? error.message : "Error desconocido al obtener el usuario";
       return { data: { user: null }, error: new AuthUnknownError(message, error) };
     }
