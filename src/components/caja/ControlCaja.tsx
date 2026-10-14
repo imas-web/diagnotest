@@ -127,12 +127,14 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
   rows: RevisadoRow[]; desde: string; hasta: string;
   onConsultar: (desde: string, hasta: string) => void;
 }) {
+  const router = useRouter();
   const fmtDia = (f: string) => {
     const [y, m, d] = f.split("-");
     return `${d}/${m}/${y.slice(2)}`;
   };
 
   const [cadete, setCadete] = useState("");
+  const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
   // Inputs de fecha en estado propio (no navegan solas): si cada tecleo
   // disparara la consulta al servidor, un "date" nativo dispara onChange con
   // estados intermedios mientras se escribe día/mes/año y la navegación corta
@@ -152,10 +154,15 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
   // servidor (ver ControlCaja/page.tsx) — acá solo se filtra cadete/estado.
   const cadetes = Array.from(new Set(rows.map((r) => r.nombre))).sort((a, b) => a.localeCompare(b, "es"));
 
+  // Una "diferencia" de $0 (ej. tocaron el botón Diferencia solo para dejar
+  // una observación, sin que en los hechos falte o sobre nada) no cuenta
+  // como diferencia real a resolver.
+  const esDiferenciaReal = (r: RevisadoRow) => r.estado === "diferencia" && r.diferencia !== 0;
+
   const filtradas = rows.filter((r) => {
     if (cadete && r.nombre !== cadete) return false;
-    if (soloDif && r.estado !== "diferencia") return false;
-    if (ocultarResueltas && r.estado === "diferencia" && r.resuelta) return false;
+    if (soloDif && !esDiferenciaReal(r)) return false;
+    if (ocultarResueltas && esDiferenciaReal(r) && r.resuelta) return false;
     return true;
   });
 
@@ -163,6 +170,32 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
   const sumEsperado = filtradas.reduce((s, r) => s + r.efectivoEsperado, 0);
   const sumRecibido = filtradas.reduce((s, r) => s + r.importeValidado, 0);
   const hayFiltro = cadete || desde || hasta || desdeInput || hastaInput || !soloDif || !ocultarResueltas;
+
+  // Diferencias sin resolver entre las que están visibles — para seleccionar
+  // todas de una y para saber si "Marcar seleccionadas como resueltas" aplica.
+  const resolviblesVisibles = filtradas.filter((r) => esDiferenciaReal(r) && !r.resuelta);
+  const todasSeleccionadas = resolviblesVisibles.length > 0 && resolviblesVisibles.every((r) => seleccionadas.has(r.id));
+
+  function toggleSeleccion(id: string) {
+    setSeleccionadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSeleccionTodas() {
+    setSeleccionadas((prev) => {
+      if (todasSeleccionadas) {
+        const next = new Set(prev);
+        resolviblesVisibles.forEach((r) => next.delete(r.id));
+        return next;
+      }
+      const next = new Set(prev);
+      resolviblesVisibles.forEach((r) => next.add(r.id));
+      return next;
+    });
+  }
 
   const inputCls = "px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[12px] bg-gy50 focus:outline-none focus:border-g500";
 
@@ -206,11 +239,25 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
         <div className="ml-auto text-[11px] text-gy400 py-1.5">{filtradas.length} de {rows.length}</div>
       </div>
 
+      {seleccionadas.size > 0 && (
+        <ResolverMasivo
+          ids={Array.from(seleccionadas)}
+          onDone={() => { setSeleccionadas(new Set()); router.refresh(); }}
+          onCancelar={() => setSeleccionadas(new Set())}
+        />
+      )}
+
       <div className="bg-white rounded-[14px] border border-gy200 shadow-sm overflow-hidden">
       <div className="table-scroll">
         <table className="w-full border-collapse text-[12px]">
           <thead>
             <tr className="bg-gy50">
+              <th className="px-3.5 py-2.5 border-b border-gy200 w-8">
+                {resolviblesVisibles.length > 0 && (
+                  <input type="checkbox" checked={todasSeleccionadas} onChange={toggleSeleccionTodas}
+                    title="Seleccionar todas las diferencias sin resolver visibles" className="accent-red-600" />
+                )}
+              </th>
               {["Cadete", "Día", "Recaudado", "Ingresos efectivo", "Gastos", "Efectivo esperado", "Efectivo recibido", "Diferencia", "Estado", "Acción"].map((h) => (
                 <th key={h} className="px-3.5 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gy400 border-b border-gy200 whitespace-nowrap">{h}</th>
               ))}
@@ -218,9 +265,15 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
           </thead>
           <tbody>
             {filtradas.map((r) => {
-              const conDif = r.estado === "diferencia";
+              const conDif = esDiferenciaReal(r);
+              const resoluble = conDif && !r.resuelta;
               return (
                 <tr key={r.id} className="hover:bg-gy50 border-b border-gy100 last:border-0">
+                  <td className="px-3.5 py-2.5">
+                    {resoluble && (
+                      <input type="checkbox" checked={seleccionadas.has(r.id)} onChange={() => toggleSeleccion(r.id)} className="accent-red-600" />
+                    )}
+                  </td>
                   <td className="px-3.5 py-2.5 font-medium text-gy900">{r.nombre}</td>
                   <td className="px-3.5 py-2.5 text-gy600 whitespace-nowrap">{fmtDia(r.fecha)}</td>
                   <td className="px-3.5 py-2.5">{fmtMoneySign(r.totalRecaudado)}</td>
@@ -256,7 +309,7 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
               );
             })}
             {filtradas.length === 0 && (
-              <tr><td colSpan={10} className="py-10 text-center text-gy400">
+              <tr><td colSpan={11} className="py-10 text-center text-gy400">
                 {rows.length === 0 ? "Todavía no hay rendiciones revisadas" : "Ningún registro coincide con los filtros"}
               </td></tr>
             )}
@@ -264,7 +317,7 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
           {filtradas.length > 0 && (
             <tfoot>
               <tr className="bg-gy50 border-t-2 border-gy200 font-bold text-gy800">
-                <td className="px-3.5 py-2.5" colSpan={5}>Totales ({filtradas.length})</td>
+                <td className="px-3.5 py-2.5" colSpan={6}>Totales ({filtradas.length})</td>
                 <td className="px-3.5 py-2.5 text-g700">{fmtMoneySign(sumEsperado)}</td>
                 <td className="px-3.5 py-2.5">{fmtMoneySign(sumRecibido)}</td>
                 <td className={`px-3.5 py-2.5 ${sumDif < 0 ? "text-red-600" : sumDif > 0 ? "text-amber-text" : "text-g700"}`}>
@@ -493,6 +546,48 @@ function ResolverDiferencia({ row }: { row: RevisadoRow }) {
       <button type="button" onClick={() => setEditando(false)} disabled={saving}
         className="px-1 text-gy400 hover:text-gy700">
         <i className="ti ti-x text-[12px]" />
+      </button>
+    </div>
+  );
+}
+
+// Barra para marcar como resueltas todas las diferencias seleccionadas de
+// una sola vez — pensada para cuando se acumularon muchas.
+function ResolverMasivo({ ids, onDone, onCancelar }: { ids: string[]; onDone: () => void; onCancelar: () => void }) {
+  const [nota, setNota] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function confirmar() {
+    setSaving(true);
+    const res = await fetch("/api/caja/diferencias/resolver", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rendicionIds: ids, resuelta: true, nota: nota || undefined }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) { toast("error", json.error ?? "No se pudo guardar"); return; }
+    toast("success", `${json.actualizadas ?? ids.length} diferencia(s) marcadas como resueltas ✓`);
+    setNota("");
+    onDone();
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap bg-amber-bg border border-amber/40 rounded-[10px] px-3.5 py-2.5">
+      <span className="text-[12px] font-semibold text-amber-text">{ids.length} seleccionada{ids.length !== 1 ? "s" : ""}</span>
+      <input type="text" value={nota} onChange={(e) => setNota(e.target.value)}
+        placeholder="Nota para todas (opcional) — ej: descontado al cadete"
+        className="flex-1 min-w-[220px] px-2.5 py-1.5 border-2 border-gy200 rounded-[6px] text-[12px] bg-white focus:outline-none focus:border-g500" />
+      <button type="button" onClick={confirmar} disabled={saving}
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-g700 text-white text-[12px] font-semibold rounded-[8px] hover:bg-g800 disabled:opacity-50">
+        {saving
+          ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+          : <i className="ti ti-check text-[13px]" />}
+        Marcar resueltas
+      </button>
+      <button type="button" onClick={onCancelar} disabled={saving}
+        className="px-2.5 py-1.5 text-[12px] font-medium text-gy600 hover:text-gy900">
+        Cancelar
       </button>
     </div>
   );

@@ -21,24 +21,28 @@ export async function POST(req: Request) {
   const guard = await requireDireccion();
   if ("error" in guard) return NextResponse.json({ error: guard.error }, { status: guard.status });
 
-  let body: { rendicionId?: string; resuelta?: boolean; nota?: string };
+  let body: { rendicionId?: string; rendicionIds?: string[]; resuelta?: boolean; nota?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Body inválido" }, { status: 400 }); }
 
-  const rendicionId = body.rendicionId;
+  const ids = body.rendicionIds?.length ? body.rendicionIds : (body.rendicionId ? [body.rendicionId] : []);
   const resuelta = !!body.resuelta;
   const nota = (body.nota ?? "").trim() || null;
-  if (!rendicionId) return NextResponse.json({ error: "Falta la rendición" }, { status: 400 });
+  if (!ids.length) return NextResponse.json({ error: "Falta la rendición" }, { status: 400 });
 
   const admin = createAdminClient();
-  const { data: prev, error: prevErr } = await admin
+  const { data: prevs, error: prevErr } = await admin
     .from("rendiciones_caja")
     .select("id, estado, personal:personal_id(nombre), fecha_operativa, diferencia")
-    .eq("id", rendicionId)
-    .single();
-  if (prevErr || !prev) return NextResponse.json({ error: "Rendición no encontrada" }, { status: 404 });
-  if (prev.estado !== "diferencia") {
-    return NextResponse.json({ error: "Esta rendición no tiene una diferencia registrada" }, { status: 400 });
+    .in("id", ids);
+  if (prevErr) return NextResponse.json({ error: prevErr.message }, { status: 400 });
+  // En un lote puede venir mezclado algo que ya no es "diferencia" (ej. se
+  // resolvió desde otra pestaña mientras tanto) — se ignora en vez de
+  // fallar todo el lote por esa fila.
+  const aplicables = (prevs ?? []).filter((p) => p.estado === "diferencia");
+  if (!aplicables.length) {
+    return NextResponse.json({ error: "Ninguna de las rendiciones tiene una diferencia registrada" }, { status: 400 });
   }
+  const idsAplicables = aplicables.map((p) => p.id);
 
   const { error: updErr } = await admin
     .from("rendiciones_caja")
@@ -48,21 +52,25 @@ export async function POST(req: Request) {
       resuelta_por: resuelta ? guard.user.id : null,
       nota_resolucion: resuelta ? nota : null,
     })
-    .eq("id", rendicionId);
+    .in("id", idsAplicables);
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 400 });
 
-  const personal = (Array.isArray(prev.personal) ? prev.personal[0] : prev.personal) as { nombre?: string } | null;
-  await admin.from("auditoria").insert({
-    entidad: "rendicion_caja",
-    entidad_id: rendicionId,
-    accion: resuelta ? "Diferencia de caja resuelta" : "Diferencia de caja reabierta",
-    campo_modificado: "resuelta",
-    valor_anterior: resuelta ? "pendiente" : "resuelta",
-    valor_nuevo: resuelta
-      ? `${personal?.nombre ?? "—"} · ${prev.fecha_operativa} · dif ${fmtMoneySign(prev.diferencia)}${nota ? ` · ${nota}` : ""}`
-      : "reabierta",
-    usuario_id: guard.user.id,
-  });
+  await admin.from("auditoria").insert(
+    aplicables.map((prev) => {
+      const personal = (Array.isArray(prev.personal) ? prev.personal[0] : prev.personal) as { nombre?: string } | null;
+      return {
+        entidad: "rendicion_caja",
+        entidad_id: prev.id,
+        accion: resuelta ? "Diferencia de caja resuelta" : "Diferencia de caja reabierta",
+        campo_modificado: "resuelta",
+        valor_anterior: resuelta ? "pendiente" : "resuelta",
+        valor_nuevo: resuelta
+          ? `${personal?.nombre ?? "—"} · ${prev.fecha_operativa} · dif ${fmtMoneySign(prev.diferencia)}${nota ? ` · ${nota}` : ""}`
+          : "reabierta",
+        usuario_id: guard.user.id,
+      };
+    })
+  );
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, actualizadas: idsAplicables.length });
 }

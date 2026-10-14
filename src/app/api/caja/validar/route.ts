@@ -89,6 +89,11 @@ export async function POST(req: Request) {
   }
   const diferencia = Math.round((importeValidado - efectivoEsperado) * 100) / 100;
   const observacion = (body.observacion ?? "").trim() || null;
+  // Si tocaron "Diferencia" pero el importe recibido terminó coincidiendo
+  // (ej. para dejar una observación sin que en realidad falte o sobre
+  // nada), queda guardado como validado — lo que importa es el número, no
+  // qué botón se tocó. Así no queda una "diferencia" de $0 para resolver.
+  const estadoFinal = diferencia === 0 ? "validado" : estado;
 
   // 1) Crear la rendición (cierre de la caja). fecha_operativa = día del cierre.
   const { data: rend, error: upErr } = await admin.from("rendiciones_caja").insert({
@@ -101,7 +106,7 @@ export async function POST(req: Request) {
     efectivo_esperado: efectivoEsperado,
     importe_validado: importeValidado,
     diferencia,
-    estado,
+    estado: estadoFinal,
     observacion,
     responsable_id: guard.user.id,
     updated_at: new Date().toISOString(),
@@ -123,7 +128,7 @@ export async function POST(req: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  const resumen = estado === "validado"
+  const resumen = estadoFinal === "validado"
     ? `Validado · efectivo esperado ${fmtMoneySign(efectivoEsperado)}`
     : `Diferencia ${diferencia >= 0 ? "+" : ""}${fmtMoneySign(diferencia)} · recibido ${fmtMoneySign(importeValidado)} vs esperado ${fmtMoneySign(efectivoEsperado)}`;
 
