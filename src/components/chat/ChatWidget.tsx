@@ -86,6 +86,15 @@ export function ChatWidget({ me }: { me: Perfil }) {
   const conversacionesRef = useRef(conversaciones);
   useEffect(() => { conversacionesRef.current = conversaciones; }, [conversaciones]);
 
+  // cargarTodo() se dispara desde varios lados a la vez (montaje, Realtime,
+  // foco de la ventana, volver a tener conexión) — si el backend está con
+  // problemas (ej. Supabase lento), cada disparo repetía el mismo cartel de
+  // error, inundando la pantalla con el mismo aviso. Se guarda el último
+  // error mostrado por endpoint y solo se avisa de nuevo si cambió (o si se
+  // recuperó y volvió a fallar), no en cada reintento idéntico.
+  const ultimoErrorConvRef = useRef<string | null>(null);
+  const ultimoErrorContactosRef = useRef<string | null>(null);
+
   async function cargarTodo() {
     // Conversaciones y contactos se piden a rutas con service role: los dos
     // selects hacen un join a profiles (chat_miembros→profiles, o profiles
@@ -97,8 +106,18 @@ export function ChatWidget({ me }: { me: Perfil }) {
       fetch("/api/chat/conversaciones").then((r) => r.json()).catch(() => ({ error: "No se pudo conectar" })),
       fetch("/api/chat/contactos").then((r) => r.json()).catch(() => ({ error: "No se pudo conectar" })),
     ]);
-    if (convsRes.error) toast("error", "No se pudieron cargar las conversaciones: " + convsRes.error);
-    if (contactosRes.error) toast("error", "No se pudieron cargar los contactos: " + contactosRes.error);
+    if (convsRes.error) {
+      if (ultimoErrorConvRef.current !== convsRes.error) toast("error", "No se pudieron cargar las conversaciones: " + convsRes.error);
+      ultimoErrorConvRef.current = convsRes.error;
+    } else {
+      ultimoErrorConvRef.current = null;
+    }
+    if (contactosRes.error) {
+      if (ultimoErrorContactosRef.current !== contactosRes.error) toast("error", "No se pudieron cargar los contactos: " + contactosRes.error);
+      ultimoErrorContactosRef.current = contactosRes.error;
+    } else {
+      ultimoErrorContactosRef.current = null;
+    }
     const convs = convsRes.conversaciones ?? [];
     setConversaciones(convs as Conversacion[]);
     setContactos(contactosRes.contactos ?? []);
