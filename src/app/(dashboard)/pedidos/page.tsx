@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Topbar } from "@/components/layout/Topbar";
@@ -16,8 +17,9 @@ export const dynamic = "force-dynamic";
 export default async function PedidosPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  const { data: profile } = await supabase.from("profiles").select("rol").eq("id", user!.id).single();
+  const { data: profile } = await supabase.from("profiles").select("rol").eq("id", user.id).single();
   const isPersonal = profile?.rol === "personal_logistica";
   const esStaff = ["jefe_logistica", "dueno", "super_admin"].includes(profile?.rol ?? "");
 
@@ -44,7 +46,7 @@ export default async function PedidosPage() {
 
   let persId: string | null = null;
   if (isPersonal) {
-    const { data: pers } = await supabase.from("personal").select("id").eq("profile_id", user!.id).single();
+    const { data: pers } = await supabase.from("personal").select("id").eq("profile_id", user.id).single();
     persId = pers?.id ?? null;
     if (persId) query = query.eq("personal_asignado_id", persId);
   }

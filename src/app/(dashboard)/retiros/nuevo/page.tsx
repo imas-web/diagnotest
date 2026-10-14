@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Topbar } from "@/components/layout/Topbar";
 import { RetiroForm } from "@/components/forms/RetiroForm";
@@ -7,11 +8,12 @@ import { formatDateTime } from "@/lib/utils/dates";
 export default async function NuevoRetiroPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, rol")
-    .eq("id", user!.id)
+    .eq("id", user.id)
     .single();
 
   let personalId: string | undefined;
@@ -19,7 +21,7 @@ export default async function NuevoRetiroPage() {
     const { data: personal } = await supabase
       .from("personal")
       .select("id")
-      .eq("profile_id", user!.id)
+      .eq("profile_id", user.id)
       .single();
     personalId = personal?.id;
   }

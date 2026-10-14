@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatCard } from "@/components/ui/StatCard";
@@ -9,8 +10,9 @@ import { GastoForm } from "@/components/forms/GastoForm";
 export default async function GastosPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  const { data: personal } = await supabase.from("personal").select("id").eq("profile_id", user!.id).single();
+  const { data: personal } = await supabase.from("personal").select("id").eq("profile_id", user.id).single();
 
   const { data: gastos } = await supabase
     .from("gastos")

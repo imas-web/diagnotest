@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Topbar } from "@/components/layout/Topbar";
 import { PillStatus } from "@/components/ui/PillStatus";
@@ -29,8 +30,9 @@ export default async function RetirosPage({
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  const { data: profile } = await supabase.from("profiles").select("rol").eq("id", user!.id).single();
+  const { data: profile } = await supabase.from("profiles").select("rol").eq("id", user.id).single();
   const isPersonal = profile?.rol === "personal_logistica";
   // Dirección y super admin pueden eliminar registros manualmente.
   const canDelete = profile?.rol === "dueno" || profile?.rol === "super_admin";
@@ -45,7 +47,7 @@ export default async function RetirosPage({
   // Si es personal de logística, se acota a su propio personal_id.
   let personalId: string | null = null;
   if (isPersonal) {
-    const { data: pers } = await supabase.from("personal").select("id").eq("profile_id", user!.id).single();
+    const { data: pers } = await supabase.from("personal").select("id").eq("profile_id", user.id).single();
     personalId = pers?.id ?? null;
   }
 

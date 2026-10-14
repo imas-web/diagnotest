@@ -7,11 +7,12 @@ import { PillStatus } from "@/components/ui/PillStatus";
 export default async function NuevoPedidoPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, rol")
-    .eq("id", user!.id)
+    .eq("id", user.id)
     .single();
 
   // Solo el jefe de logística (o dirección) puede crear pedidos.
