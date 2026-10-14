@@ -581,6 +581,7 @@ export function ControlCard({ control, tipo, etapa = "obs", usuarioId }: Props) 
               <ResponsableSelector
                 value={etapa === "c1" ? responsable1 : responsable2}
                 onChange={etapa === "c1" ? elegirResponsable1 : elegirResponsable2}
+                multiple={etapa === "c1"}
               />
             </div>
           </div>

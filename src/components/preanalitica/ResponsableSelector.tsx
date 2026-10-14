@@ -10,15 +10,21 @@ function parse(value: string | null): string[] {
   return (value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-// Lista de nombres para marcar quién hizo el control. Permite marcar VARIAS
-// personas. "Reemplazo" habilita un campo de texto para sumar un nombre que no
-// está en la lista. El valor guardado es la lista de nombres separada por coma.
+// Lista de nombres para marcar quién hizo el control. En modo "multiple"
+// (Control 1: 2 personas fijas todo el día) se pueden marcar varias a la vez.
+// En modo single (Control 2: una persona por ficha) marcar un nombre
+// REEMPLAZA al anterior — si no, el último elegido quedaba pegado para
+// siempre porque nadie lo destildaba, solo se iban sumando nombres encima.
+// "Reemplazo" habilita un campo de texto para un nombre que no está en la
+// lista. El valor guardado es la lista de nombres separada por coma.
 export function ResponsableSelector({
   value,
   onChange,
+  multiple = true,
 }: {
   value: string | null;
   onChange: (v: string | null) => void;
+  multiple?: boolean;
 }) {
   const seleccionados = parse(value);
   const fijosSel = seleccionados.filter((s) => FIJOS.includes(s));
@@ -34,6 +40,12 @@ export function ResponsableSelector({
   };
 
   const toggleFijo = (nombre: string) => {
+    if (!multiple) {
+      const yaEraEste = !modoReemplazo && fijosSel.length === 1 && fijosSel[0] === nombre;
+      emitir(yaEraEste ? [] : [nombre], "");
+      if (modoReemplazo) { setModoReemplazo(false); setTextoReemplazo(""); }
+      return;
+    }
     const nuevos = fijosSel.includes(nombre)
       ? fijosSel.filter((x) => x !== nombre)
       : [...fijosSel, nombre];
@@ -43,13 +55,14 @@ export function ResponsableSelector({
   const toggleReemplazo = () => {
     const activar = !modoReemplazo;
     setModoReemplazo(activar);
+    if (!multiple) { emitir([], activar ? textoReemplazo : ""); return; }
     emitir(fijosSel, activar ? textoReemplazo : "");
   };
 
   return (
     <div>
       <div className="text-[10px] font-semibold uppercase tracking-wide text-gy400 mb-1">
-        ¿Quién controló? <span className="normal-case tracking-normal text-gy400 font-normal">(podés marcar más de uno)</span>
+        ¿Quién controló? {multiple && <span className="normal-case tracking-normal text-gy400 font-normal">(podés marcar más de uno)</span>}
       </div>
       <div className="flex flex-wrap gap-1.5">
         {FIJOS.map((nombre) => {
