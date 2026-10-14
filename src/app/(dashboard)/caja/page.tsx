@@ -47,7 +47,7 @@ export default async function CajaPage({
 
   // Pendientes = caja abierta de cada cadete: retiros/gastos NO validados
   // (rendicion_id NULL), sin importar el día. El corte lo marca la validación.
-  const [retiros, gastos, { data: revisadosRaw }] = await Promise.all([
+  const [retiros, gastos, { data: revisadosRaw, error: revisadosErr }] = await Promise.all([
     fetchAllRows((from, to) =>
       admin.from("retiros")
         .select("personal_id, importe_declarado, metodo_pago, fecha_operativa, personal:personal_id(nombre)")
@@ -66,14 +66,27 @@ export default async function CajaPage({
       // validadas en total, elegir un rango viejo (ej. de hace un mes)
       // nunca mostraba nada: esas filas ya habían quedado afuera del
       // "limit" antes de que el filtro de fecha pudiera aplicarse.
+      // "resuelta_por" se resuelve aparte (abajo) y no acá embebido: un
+      // embed de un FK agregado por migración puede fallar si PostgREST
+      // todavía no refrescó su caché de relaciones, y ahí rompe TODA la
+      // consulta (no solo ese campo) sin que quede a la vista.
       let q = admin.from("rendiciones_caja")
-        .select("*, personal:personal_id(nombre), resuelta_por_nombre:resuelta_por(nombre)")
+        .select("*, personal:personal_id(nombre)")
         .in("estado", ["validado", "diferencia"]);
       if (desde) q = q.gte("fecha_operativa", desde);
       if (hasta) q = q.lte("fecha_operativa", hasta);
       return q.order("fecha_operativa", { ascending: false }).order("updated_at", { ascending: false }).limit(2000);
     })(),
   ]);
+  if (revisadosErr) console.error("[caja] error al traer rendiciones_caja:", revisadosErr.message);
+
+  // Nombres de quién resolvió cada diferencia (join aparte, ver comentario arriba).
+  const resuelvePorIds = Array.from(new Set((revisadosRaw ?? []).map((x) => x.resuelta_por).filter(Boolean)));
+  const nombreResuelvePor = new Map<string, string>();
+  if (resuelvePorIds.length) {
+    const { data: profs } = await admin.from("profiles").select("id, nombre").in("id", resuelvePorIds);
+    for (const p of profs ?? []) nombreResuelvePor.set(p.id, p.nombre);
+  }
 
   // Agregación por cadete + día operativo: los cadetes rinden la caja con
   // corte diario, así que una caja pendiente de varios días atrás se muestra
@@ -128,7 +141,7 @@ export default async function CajaPage({
     estado: x.estado,
     observacion: x.observacion ?? null,
     resuelta: !!x.resuelta,
-    resuelvePor: (x.resuelta_por_nombre as { nombre?: string } | null)?.nombre ?? null,
+    resuelvePor: x.resuelta_por ? (nombreResuelvePor.get(x.resuelta_por) ?? null) : null,
     notaResolucion: x.nota_resolucion ?? null,
   }));
 
