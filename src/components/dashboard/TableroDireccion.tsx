@@ -94,9 +94,14 @@ export function TableroDireccion({ data }: { data: DashData }) {
       const m = monthOf(maxDay);
       let f = maxDay, t = maxDay;
       for (let d = minDay; d <= maxDay; d++) if (monthOf(d) === m) { f = Math.min(f, d); t = Math.max(t, d); }
-      const pm = m - 1; let pf = Infinity, pt = -Infinity;
-      for (let d = minDay; d <= maxDay; d++) if (monthOf(d) === pm) { pf = Math.min(pf, d); pt = Math.max(pt, d); }
-      return [f, t, pf <= pt ? pf : null, pt];
+      const pm = m - 1; let pf = Infinity, pFullEnd = -Infinity;
+      for (let d = minDay; d <= maxDay; d++) if (monthOf(d) === pm) { pf = Math.min(pf, d); pFullEnd = Math.max(pFullEnd, d); }
+      if (pf > pFullEnd) return [f, t, null, null];
+      // Mismo tramo de días del mes anterior (ej. 1-15) en vez del mes
+      // anterior COMPLETO — así un mes en curso parcial (todavía no llegó a
+      // fin de mes) no se compara contra 30 días cuando lleva solo 15.
+      const pt = Math.min(pFullEnd, pf + (t - f));
+      return [f, t, pf, pt];
     }
     return [minDay, maxDay, null, null]; // trimestre / todo
   }
