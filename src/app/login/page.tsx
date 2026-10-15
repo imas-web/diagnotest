@@ -6,50 +6,77 @@ import { createClient } from "@/lib/supabase/client";
 import { landingPathForRole } from "@/lib/utils/roles";
 import { withTimeout } from "@/lib/supabase/withTimeout";
 
+// Supabase viene fallando de a ráfagas (responde mal unos segundos y
+// después anda bien), no 100% caído todo el tiempo — por eso reintentar
+// automáticamente unas pocas veces, antes de rendirse y mostrarle el error
+// a la persona, aumenta mucho las chances de entrar sin que tenga que
+// tocar "Ingresar" de nuevo a mano.
+const INTENTOS = 3;
+const TIMEOUT_MS = 10000;
+const ESPERA_ENTRE_INTENTOS_MS = 1500;
+
+async function conReintentos<T>(fn: () => PromiseLike<T>, onReintentar?: () => void): Promise<T> {
+  let ultimoError: unknown;
+  for (let intento = 1; intento <= INTENTOS; intento++) {
+    try {
+      return await withTimeout(fn(), TIMEOUT_MS);
+    } catch (e) {
+      ultimoError = e;
+      if (intento < INTENTOS) {
+        onReintentar?.();
+        await new Promise((r) => setTimeout(r, ESPERA_ENTRE_INTENTOS_MS));
+      }
+    }
+  }
+  throw ultimoError;
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [reintentando, setReintentando] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setReintentando(false);
 
     const supabase = createClient();
-    // Si Supabase tarda en responder (lo vimos pasar: el servicio de auth
-    // devolviendo 504), sin un límite propio el botón queda girando en
-    // "Ingresando…" para siempre, sin aviso ni forma de reintentar.
     let data: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"];
     let authError: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["error"];
     try {
-      ({ data, error: authError } = await withTimeout(
-        supabase.auth.signInWithPassword({ email, password }),
-        15000
+      ({ data, error: authError } = await conReintentos(
+        () => supabase.auth.signInWithPassword({ email, password }),
+        () => setReintentando(true)
       ));
     } catch {
-      setError("No se pudo conectar. Probá de nuevo en unos segundos.");
+      setError("No se pudo conectar con el servidor. Probá de nuevo en unos segundos.");
       setLoading(false);
+      setReintentando(false);
       return;
     }
 
     if (authError || !data.user) {
       setError("Email o contraseña incorrectos");
       setLoading(false);
+      setReintentando(false);
       return;
     }
 
     let profile: { rol: string; activo: boolean } | null;
     try {
-      ({ data: profile } = await withTimeout(
-        supabase.from("profiles").select("rol, activo").eq("id", data.user.id).single(),
-        15000
+      ({ data: profile } = await conReintentos(
+        () => supabase.from("profiles").select("rol, activo").eq("id", data.user.id).single(),
+        () => setReintentando(true)
       ));
     } catch {
-      setError("No se pudo conectar. Probá de nuevo en unos segundos.");
+      setError("No se pudo conectar con el servidor. Probá de nuevo en unos segundos.");
       setLoading(false);
+      setReintentando(false);
       return;
     }
 
@@ -148,7 +175,7 @@ export default function LoginPage() {
               {loading ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Ingresando…
+                  {reintentando ? "Reintentando…" : "Ingresando…"}
                 </>
               ) : (
                 "Ingresar"
