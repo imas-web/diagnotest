@@ -73,6 +73,7 @@ export function TableroDireccion({ data }: { data: DashData }) {
   const [cad, setCad] = useState(-1);
   const [zona, setZona] = useState(-1);
   const [cmp, setCmp] = useState(false);
+  const [soloHabiles, setSoloHabiles] = useState(false);
   const [metric, setMetric] = useState<Metric>("ret");
   // Por defecto, últimas 4 semanas — así "Personalizado" no arranca vacío mostrando todo el histórico.
   const [customF, setCustomF] = useState<string>(() => isoOfDay(baseDay, Math.max(minDay, maxDay - 27)));
@@ -100,11 +101,12 @@ export function TableroDireccion({ data }: { data: DashData }) {
     return [minDay, maxDay, null, null]; // trimestre / todo
   }
 
-  function agg(f: number, t: number, cadF: number, zonaF: number) {
+  function agg(f: number, t: number, cadF: number, zonaF: number, diasSet?: Set<number>) {
     let ret = 0, mue = 0; const vs = new Set<number>(), cs = new Set<number>();
     const byCad = new Map<number, number>(), byZona = new Map<number, number>(), byVet = new Map<number, number>(), byZonaMue = new Map<number, number>();
     for (const r of rows) {
       if (r.day < f || r.day > t) continue;
+      if (diasSet && !diasSet.has(r.day)) continue;
       const z = data.vets[r.vet]?.[1] ?? 0;
       if (cadF >= 0 && r.cad !== cadF) continue;
       if (zonaF >= 0 && z !== zonaF) continue;
@@ -146,8 +148,22 @@ export function TableroDireccion({ data }: { data: DashData }) {
   }
 
   const [f, t, pf, pt] = range();
-  const cur = agg(f, t, cad, zona);
-  const prev = cmp && pf != null && pt != null ? agg(pf, pt, cad, zona) : null;
+
+  // Un día cuenta como "hábil" si entró actividad real (muestras) en TODA la
+  // plataforma ese día — no depende del cadete/zona filtrados ni de un
+  // calendario fijo de feriados, se ajusta solo a lo que pasó de verdad.
+  function diasHabilesEn(desde: number, hasta: number): number[] {
+    const out: number[] = [];
+    for (let d = desde; d <= hasta; d++) if (agg(d, d, -1, -1).mue > 0) out.push(d);
+    return out;
+  }
+  const curHabiles = soloHabiles ? diasHabilesEn(f, t) : null;
+  const prevHabiles = soloHabiles && pf != null && pt != null ? diasHabilesEn(pf, pt) : null;
+  const curSet = curHabiles ? new Set(curHabiles) : undefined;
+  const prevSet = prevHabiles ? new Set(prevHabiles) : undefined;
+
+  const cur = agg(f, t, cad, zona, curSet);
+  const prev = cmp && pf != null && pt != null ? agg(pf, pt, cad, zona, prevSet) : null;
   const m = METRIC_LABEL[metric];
   const { arr, grain } = buckets(f, t, cad, zona, metric);
   const mx = Math.max(1, ...arr.map((b) => b.v));
@@ -166,6 +182,18 @@ export function TableroDireccion({ data }: { data: DashData }) {
   if (arr.length >= 2) {
     const pc = first ? Math.round(((last - first) / first) * 100) : null;
     trendTxt = pc == null ? `De ${fmtM(first)} a ${fmtM(last)} entre el inicio y el fin del período.` : `${pc >= 0 ? "Subió" : "Bajó"} ${Math.abs(pc)}% entre el inicio y el fin del período (${fmtM(first)} → ${fmtM(last)}).`;
+  }
+
+  let variacionTxt: string | null = null;
+  if (prev) {
+    if (soloHabiles && curHabiles?.length && prevHabiles?.length) {
+      const cr = cur.ret / curHabiles.length, pr = prev.ret / prevHabiles.length;
+      const pc = pr ? Math.round(((cr - pr) / pr) * 100) : 0;
+      variacionTxt = `${pc >= 0 ? "+" : ""}${pc}% de retiros por día hábil vs período anterior (${fmtDec(pr)} → ${fmtDec(cr)} por día).`;
+    } else {
+      const pc = prev.ret ? Math.round(((cur.ret - prev.ret) / prev.ret) * 100) : 0;
+      variacionTxt = `${pc >= 0 ? "+" : ""}${pc}% de retiros vs período anterior (${fmt(prev.ret)} → ${fmt(cur.ret)}).`;
+    }
   }
 
   function rankRows(entries: [number, number][], names: string[], flagIdx?: number) {
@@ -202,13 +230,30 @@ export function TableroDireccion({ data }: { data: DashData }) {
     ));
   }
 
-  function delta(c: number, p: number | null) {
-    if (!cmp || p == null) return null;
+  function pctBadge(c: number, p: number, suffix: ReactNode) {
     if (p === 0) return <span className="text-g600 font-bold text-[12px]">▲ nuevo</span>;
     const pc = Math.round(((c - p) / p) * 100);
     const cls = pc > 2 ? "text-g600" : pc < -2 ? "text-red-600" : "text-gy400";
     const ar = pc > 2 ? "▲" : pc < -2 ? "▼" : "▬";
-    return <span className="text-[12px]"><span className={`font-bold ${cls}`}>{ar} {pc > 0 ? "+" : ""}{pc}%</span> <span className="text-gy400">ant: {fmt(p)}</span></span>;
+    return <span className="text-[12px]"><span className={`font-bold ${cls}`}>{ar} {pc > 0 ? "+" : ""}{pc}%</span> <span className="text-gy400">{suffix}</span></span>;
+  }
+  function delta(c: number, p: number | null) {
+    if (!cmp || p == null) return null;
+    return pctBadge(c, p, <>ant: {fmt(p)}</>);
+  }
+  // Para Retiros/Muestras: si está activo "solo días hábiles", compara el
+  // PROMEDIO por día hábil en vez del total — así un mes en curso (parcial,
+  // con menos días transcurridos) se compara de forma justa contra un mes
+  // anterior completo, en vez de mostrar una caída que en realidad es solo
+  // que todavía faltan días por sumar.
+  function deltaFlow(c: number, p: number | null) {
+    if (!cmp || p == null) return null;
+    if (soloHabiles) {
+      const cd = curHabiles?.length ?? 0, pd = prevHabiles?.length ?? 0;
+      if (!cd || !pd) return <span className="text-[12px] text-gy400">sin días hábiles para comparar</span>;
+      return pctBadge(c / cd, p / pd, <>prom/día hábil · ant: {fmtDec(p / pd)}</>);
+    }
+    return pctBadge(c, p, <>ant: {fmt(p)}</>);
   }
 
   return (
@@ -250,19 +295,39 @@ export function TableroDireccion({ data }: { data: DashData }) {
           </span>
           Comparar vs período anterior
         </label>
+        {cmp && (
+          <label className="inline-flex items-center gap-2 text-[12px] text-gy600 cursor-pointer select-none" title="Compara el promedio por día hábil en vez del total, para que no afecte si un período tiene más o menos días que el otro">
+            <span className={`w-8 h-[18px] rounded-full relative transition-colors ${soloHabiles ? "bg-g600" : "bg-gy200"}`} onClick={() => setSoloHabiles((v) => !v)}>
+              <span className={`absolute top-[2px] w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${soloHabiles ? "left-[16px]" : "left-[2px]"}`} />
+            </span>
+            Solo días hábiles (promedio diario)
+          </label>
+        )}
       </div>
       <p className="text-[12px] text-gy400 px-0.5">
         Mostrando <b className="text-gy600">{perLabel[periodo]}</b> ({x0.getUTCDate()}/{x0.getUTCMonth() + 1} – {x1.getUTCDate()}/{x1.getUTCMonth() + 1})
         {cad >= 0 && <> · cadete <b className="text-gy600">{data.cadetes[cad]}</b></>}
         {zona >= 0 && <> · zona <b className="text-gy600">{data.zonas[zona]}</b></>}
-        {cmp && (pf != null ? <> · comparando vs período anterior</> : <> · sin datos suficientes para comparar</>)}
+        {cmp && (pf != null && pt != null ? (
+          <>
+            {" · comparando vs "}
+            <b className="text-gy600">
+              {dateFromDay(baseDay, pf).getUTCDate()}/{dateFromDay(baseDay, pf).getUTCMonth() + 1}
+              {" – "}
+              {dateFromDay(baseDay, pt).getUTCDate()}/{dateFromDay(baseDay, pt).getUTCMonth() + 1}
+            </b>
+            {soloHabiles && curHabiles && prevHabiles && (
+              <> ({curHabiles.length} día(s) hábil(es) vs {prevHabiles.length} anterior(es))</>
+            )}
+          </>
+        ) : <> · sin datos suficientes para comparar</>)}
       </p>
 
       {/* Logística */}
       <SectionTitle icon="🚚" title="Operación · Logística" />
       <div className="grid grid-cols-4 gap-3.5 max-[900px]:grid-cols-2 max-[560px]:grid-cols-1">
-        <Kpi label="Retiros" value={fmt(cur.ret)} foot={delta(cur.ret, prev?.ret ?? null)} />
-        <Kpi label="Muestras" value={fmt(cur.mue)} foot={delta(cur.mue, prev?.mue ?? null)} />
+        <Kpi label="Retiros" value={fmt(cur.ret)} foot={deltaFlow(cur.ret, prev?.ret ?? null)} />
+        <Kpi label="Muestras" value={fmt(cur.mue)} foot={deltaFlow(cur.mue, prev?.mue ?? null)} />
         <Kpi label="Veterinarias únicas" value={fmt(cur.vets)} foot={delta(cur.vets, prev?.vets ?? null)} />
         <Kpi label="Muestras por retiro" value={<>{fmtDec(cur.ret ? cur.mue / cur.ret : 0)} <small className="text-[13px] text-gy400">m/ret</small></>}
           foot={<span className="text-gy400 text-[12px]">{cur.cads} cadete(s) · {fmt(cur.ret / (cur.cads || 1))} retiros c/u</span>} />
@@ -322,9 +387,9 @@ export function TableroDireccion({ data }: { data: DashData }) {
             <InsightItem tone="ok" icon="★"><b>{data.cadetes[topCad[0]]}</b> lidera con <b>{fmt(topCad[1])}</b> retiros en el período seleccionado.</InsightItem>
           )}
           <InsightItem tone="ok" icon="✓"><b>Calidad:</b> {data.calidad.okPct.toFixed(1).replace(".", ",")}% controlado OK este mes (dato global, no filtrable).</InsightItem>
-          {prev && (
+          {prev && variacionTxt && (
             <InsightItem tone={cur.ret >= prev.ret ? "ok" : "warn"} icon={cur.ret >= prev.ret ? "↗" : "↘"}>
-              <b>Variación:</b> {prev.ret ? (cur.ret >= prev.ret ? "+" : "") + Math.round(((cur.ret - prev.ret) / prev.ret) * 100) : 0}% de retiros vs período anterior ({fmt(prev.ret)} → {fmt(cur.ret)}).
+              <b>Variación:</b> {variacionTxt}
             </InsightItem>
           )}
         </div>
