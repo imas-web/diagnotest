@@ -1,8 +1,9 @@
 import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
-import { AuthUnknownError } from "@supabase/supabase-js";
+import { AuthSessionMissingError, AuthUnknownError } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { withTimeout } from "@/lib/supabase/withTimeout";
+import { authCacheKey, getCachedAuthUser, setCachedAuthUser } from "@/lib/supabase/authCache";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -26,9 +27,18 @@ export async function createClient() {
     }
   );
 
-  // Cada página/ruta crea su propio cliente y llama getUser() por separado.
-  // Dos formas conocidas en que esto se cuelga o corta el acceso sin que la
-  // sesión sea realmente inválida:
+  // Cada página/ruta crea su propio cliente y llama getUser() por separado,
+  // y getUser() SIEMPRE revalida el token contra el servidor de Auth de
+  // Supabase — así que cualquier bache de Supabase (vimos varias veces un
+  // 504 directo de su endpoint /user) afecta a cualquiera navegando en ese
+  // momento, multiplicado por toda la gente usando el sistema a la vez.
+  //
+  // Por eso el resultado de una verificación YA HECHA se cachea acá un
+  // ratito corto (30s, ver authCache.ts), con clave = las cookies de auth
+  // tal cual llegan. Nunca se confía en algo sin verificar: si el cliente
+  // cambia esas cookies (logout, refresh, o un intento de editarlas a
+  // mano), la clave cambia y se vuelve a pedir la verificación real. Esto
+  // además resuelve los dos problemas de colgarse que ya conocíamos:
   //  1) Varios requests en simultáneo justo cuando el token está por vencer
   //     intentan refrescarlo con la misma cookie — Supabase rechaza los
   //     demás con un 409 "too many concurrent token refresh requests".
@@ -40,17 +50,30 @@ export async function createClient() {
   // ~60 páginas que llaman getUser() esperando solo { data, error }).
   const getUserOriginal = supabase.auth.getUser.bind(supabase.auth);
   supabase.auth.getUser = async (...args: Parameters<typeof getUserOriginal>) => {
-    try {
-      const res = await withTimeout(getUserOriginal(...args), 6000);
-      if (res.error?.status !== 409) return res;
-    } catch { /* sigue al reintento de abajo */ }
-    await new Promise((r) => setTimeout(r, 200));
-    try {
-      return await withTimeout(getUserOriginal(...args), 6000);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Error desconocido al obtener el usuario";
-      return { data: { user: null }, error: new AuthUnknownError(message, error) };
+    const cacheKey = authCacheKey(cookieStore.getAll());
+    const cached = getCachedAuthUser(cacheKey);
+    if (cached !== undefined) {
+      return cached
+        ? { data: { user: cached }, error: null }
+        : { data: { user: null }, error: new AuthSessionMissingError() };
     }
+
+    let res: Awaited<ReturnType<typeof getUserOriginal>> | undefined;
+    try {
+      res = await withTimeout(getUserOriginal(...args), 6000);
+      if (res.error?.status === 409) res = undefined; // fuerza el reintento de abajo
+    } catch { /* sigue al reintento de abajo */ }
+    if (!res) {
+      await new Promise((r) => setTimeout(r, 200));
+      try {
+        res = await withTimeout(getUserOriginal(...args), 6000);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Error desconocido al obtener el usuario";
+        return { data: { user: null }, error: new AuthUnknownError(message, error) };
+      }
+    }
+    if (!res.error) setCachedAuthUser(cacheKey, res.data.user);
+    return res;
   };
 
   return supabase;
