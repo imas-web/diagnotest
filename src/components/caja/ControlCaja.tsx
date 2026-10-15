@@ -258,7 +258,7 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
                     title="Seleccionar todas las diferencias sin resolver visibles" className="accent-red-600" />
                 )}
               </th>
-              {["Cadete", "Día", "Recaudado", "Ingresos efectivo", "Gastos", "Efectivo esperado", "Efectivo recibido", "Diferencia", "Estado", "Acción"].map((h) => (
+              {["Cadete", "Día", "Recaudado", "Ingresos efectivo", "Gastos", "Efectivo esperado", "Efectivo recibido", "Diferencia", "Observación", "Estado", "Acción"].map((h) => (
                 <th key={h} className="px-3.5 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gy400 border-b border-gy200 whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -283,6 +283,9 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
                   <td className="px-3.5 py-2.5">{fmtMoneySign(r.importeValidado)}</td>
                   <td className={`px-3.5 py-2.5 font-bold ${r.diferencia < 0 ? "text-red-600" : r.diferencia > 0 ? "text-amber-text" : "text-g700"}`}>
                     {r.diferencia >= 0 ? "+" : ""}{fmtMoneySign(r.diferencia)}
+                  </td>
+                  <td className="px-3.5 py-2.5 text-gy600 max-w-[220px] truncate" title={r.observacion ?? undefined}>
+                    {r.observacion || <span className="text-gy300">—</span>}
                   </td>
                   <td className="px-3.5 py-2.5">
                     {conDif ? (
@@ -309,7 +312,7 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
               );
             })}
             {filtradas.length === 0 && (
-              <tr><td colSpan={11} className="py-10 text-center text-gy400">
+              <tr><td colSpan={12} className="py-10 text-center text-gy400">
                 {rows.length === 0 ? "Todavía no hay rendiciones revisadas" : "Ningún registro coincide con los filtros"}
               </td></tr>
             )}
@@ -323,7 +326,7 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
                 <td className={`px-3.5 py-2.5 ${sumDif < 0 ? "text-red-600" : sumDif > 0 ? "text-amber-text" : "text-g700"}`}>
                   {sumDif >= 0 ? "+" : ""}{fmtMoneySign(sumDif)}
                 </td>
-                <td className="px-3.5 py-2.5" colSpan={2} />
+                <td className="px-3.5 py-2.5" colSpan={3} />
               </tr>
             </tfoot>
           )}
