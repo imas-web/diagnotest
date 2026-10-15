@@ -170,7 +170,7 @@ export async function POST(req: Request) {
   // Códigos ya existentes (para clasificar creado vs actualizado). Paginado por el cap de 1000.
   const existentes = new Set<string>();
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await admin.from("veterinarias").select("codigo").range(from, from + 999);
+    const { data, error } = await admin.from("veterinarias").select("codigo").order("id", { ascending: true }).range(from, from + 999);
     if (error || !data || data.length === 0) break;
     for (const v of data) existentes.add(String(v.codigo));
     if (data.length < 1000) break;

@@ -108,6 +108,7 @@ export default async function DashboardPage() {
           admin.from("control_preanalitica")
             .select("estado,responsable_2,updated_at,retiro:retiro_id!inner(timestamp_carga,fecha_operativa)")
             .neq("estado", "pendiente").gte("retiro.fecha_operativa", firstDayMonth)
+            .order("id", { ascending: true })
             .range(i * 1000, i * 1000 + 999)
         )
       );
@@ -127,6 +128,7 @@ export default async function DashboardPage() {
           admin.from("control_cobranzas")
             .select("estado,importe_declarado,importe_validado,responsable_id,retiro:retiro_id!inner(fecha_operativa)")
             .gte("retiro.fecha_operativa", firstDayMonth)
+            .order("id", { ascending: true })
             .range(i * 1000, i * 1000 + 999)
         )
       );
@@ -167,6 +169,7 @@ export default async function DashboardPage() {
           admin.from("control_preanalitica")
             .select("updated_at,retiro:retiro_id!inner(timestamp_carga,fecha_operativa)")
             .neq("estado", "pendiente").gte("retiro.fecha_operativa", firstDayPrevMonth).lt("retiro.fecha_operativa", firstDayMonth)
+            .order("id", { ascending: true })
             .range(i * 1000, i * 1000 + 999)
         )
       );
@@ -192,6 +195,7 @@ export default async function DashboardPage() {
           admin.from("control_cobranzas")
             .select("estado,importe_declarado,importe_validado,retiro:retiro_id!inner(fecha_operativa)")
             .gte("retiro.fecha_operativa", firstDayPrevMonth).lt("retiro.fecha_operativa", firstDayMonth)
+            .order("id", { ascending: true })
             .range(i * 1000, i * 1000 + 999)
         )
       );

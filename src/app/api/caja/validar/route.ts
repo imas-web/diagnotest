@@ -53,15 +53,22 @@ export async function POST(req: Request) {
   // El corte es por día: solo se sellan los retiros/gastos no validados de
   // ESE día operativo del cadete (no todo lo acumulado hasta esa fecha) —
   // así cada jornada se rinde por separado, como hacen los cadetes.
+  // El .order("id") es necesario: sin un orden explícito, Postgres no
+  // garantiza la misma secuencia entre dos consultas paginadas con .range()
+  // — una fila podía salir en dos "páginas" y sumarse dos veces, sellando
+  // una rendición con el total YA inflado (esto no se auto-corrige con un
+  // refresh, a diferencia de la lectura en /caja).
   const [retiros, gastos] = await Promise.all([
     fetchAllRows<{ id: string; importe_declarado: number; metodo_pago: string }>((from, to) =>
       admin.from("retiros").select("id, importe_declarado, metodo_pago")
         .eq("personal_id", personalId).eq("anulado", false).is("rendicion_id", null).eq("fecha_operativa", fecha)
+        .order("id", { ascending: true })
         .range(from, to)
     ),
     fetchAllRows<{ id: string; monto: number }>((from, to) =>
       admin.from("gastos").select("id, monto")
         .eq("personal_id", personalId).is("rendicion_id", null).eq("fecha_operativa", fecha)
+        .order("id", { ascending: true })
         .range(from, to)
     ),
   ]);

@@ -41,17 +41,22 @@ export default async function ValidacionesPage() {
   type RetiroRow = { personal_id: string; fecha_operativa: string; personal: { nombre?: string }[] | { nombre?: string } | null };
   type GastoDif = { personal_id: string; fecha_operativa: string };
 
+  // El .order("id") evita que una fila salga en dos páginas distintas (ver
+  // mismo comentario en caja/page.tsx), lo que duplicaba el conteo de
+  // retiros de una caja.
   const [retiros, diferencias] = await Promise.all([
     fetchAllRows<RetiroRow>((from, to) =>
       admin.from("retiros")
         .select("personal_id, fecha_operativa, personal:personal_id(nombre)")
         .is("rendicion_id", null).eq("anulado", false)
+        .order("id", { ascending: true })
         .range(from, to)
     ),
     fetchAllRows<GastoDif>((from, to) =>
       admin.from("gastos")
         .select("personal_id, fecha_operativa")
         .is("rendicion_id", null).eq("tipo", "diferencia_caja")
+        .order("id", { ascending: true })
         .range(from, to)
     ),
   ]);

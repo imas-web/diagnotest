@@ -46,16 +46,24 @@ export default async function CajaPage({
   // Pendientes = caja abierta de cada cadete: retiros/gastos NO validados
   // (rendicion_id NULL), sin importar el día. El corte lo marca la validación.
   const [retiros, gastos, { data: revisadosRaw, error: revisadosErr }] = await Promise.all([
+    // El .order("id") es necesario: sin un orden explícito, Postgres no
+    // garantiza la misma secuencia entre dos consultas paginadas con
+    // .range() — una fila podía salir en dos "páginas" distintas y
+    // contarse dos veces (totales duplicados que un refresh corregía al
+    // tener suerte con el orden). Solo se notaba con >1000 pendientes
+    // acumulados (ahí arranca la paginación).
     fetchAllRows((from, to) =>
       admin.from("retiros")
         .select("personal_id, importe_declarado, metodo_pago, fecha_operativa, personal:personal_id(nombre)")
         .is("rendicion_id", null).eq("anulado", false).lte("fecha_operativa", fecha)
+        .order("id", { ascending: true })
         .range(from, to)
     ),
     fetchAllRows((from, to) =>
       admin.from("gastos")
         .select("personal_id, monto, descripcion, tipo, fecha_operativa, personal:personal_id(nombre)")
         .is("rendicion_id", null).lte("fecha_operativa", fecha)
+        .order("id", { ascending: true })
         .range(from, to)
     ),
     (() => {

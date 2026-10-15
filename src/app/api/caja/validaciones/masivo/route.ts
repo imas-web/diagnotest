@@ -45,15 +45,19 @@ export async function POST(req: Request) {
     return rows;
   }
 
+  // El .order("id") evita que una fila salga en dos páginas distintas (ver
+  // mismo comentario en caja/page.tsx y caja/validar/route.ts).
   const [retiros, gastos] = await Promise.all([
     fetchAllRows<{ personal_id: string; fecha_operativa: string }>((from, to) =>
       admin.from("retiros").select("personal_id, fecha_operativa")
         .is("rendicion_id", null).eq("anulado", false)
+        .order("id", { ascending: true })
         .range(from, to)
     ),
     fetchAllRows<{ personal_id: string; fecha_operativa: string }>((from, to) =>
       admin.from("gastos").select("personal_id, fecha_operativa")
         .is("rendicion_id", null).eq("tipo", "diferencia_caja")
+        .order("id", { ascending: true })
         .range(from, to)
     ),
   ]);
