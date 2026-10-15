@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getMyProfile } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { withTimeout } from "@/lib/supabase/withTimeout";
 import { Topbar } from "@/components/layout/Topbar";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { ResumenPendientesEtapa } from "@/components/preanalitica/ResumenPendientesEtapa";
@@ -19,6 +20,20 @@ type PersonalRow = { id: string; nombre: string };
 type ZonaRow = { id: string; nombre: string };
 type ControlMesRow = { estado: string; responsable_2: string | null; updated_at: string; retiro: { timestamp_carga: string } | { timestamp_carga: string }[] | null };
 type CobranzaMesRow = { estado: string; importe_declarado: number | null; importe_validado: number | null; responsable_id: string | null };
+
+// Sin esto, si una sola de las ~15 consultas pesadas de este dashboard
+// (todas por el cliente admin) responde lenta, TODO el Promise.all se
+// cuelga hasta el límite duro de Vercel (300s) — confirmado en runtime
+// logs. Cada entrada se envuelve con su propio límite y, si se agota,
+// se degrada a un valor vacío en vez de tirar abajo toda la pantalla.
+const DB_TIMEOUT = 20000;
+async function qTimeout<T>(p: PromiseLike<T>, fallback: T, ms = DB_TIMEOUT): Promise<T> {
+  try {
+    return await withTimeout(p, ms);
+  } catch {
+    return fallback;
+  }
+}
 
 // Pagina un select simple (sin joins) trayendo TODAS las filas: PostgREST
 // limita cada request a 1000 filas, así que se piden todas las páginas en
@@ -71,13 +86,16 @@ export default async function DashboardPage() {
     okCount, obsCount, rechCount, pendCount,
     okCountPrev, obsCountPrev, rechCountPrev, tiempoControlHsPrev, cobranzasPrevMes,
   ] = await Promise.all([
-    fetchAllSimple<RetiroRow>(admin, "retiros", "fecha_operativa,personal_id,veterinaria_id,veterinaria_texto_original,cantidad_muestras",
-      (q) => q.eq("anulado", false).neq("estado", "duplicado_sospechoso")),
-    fetchAllSimple<VetRow>(admin, "veterinarias", "id,nombre,zona_id", (q) => q),
-    admin.from("personal").select("id,nombre").order("nombre").then((r) => (r.data as PersonalRow[]) ?? []),
-    admin.from("zonas").select("id,nombre").order("nombre").then((r) => (r.data as ZonaRow[]) ?? []),
+    qTimeout(
+      fetchAllSimple<RetiroRow>(admin, "retiros", "fecha_operativa,personal_id,veterinaria_id,veterinaria_texto_original,cantidad_muestras",
+        (q) => q.eq("anulado", false).neq("estado", "duplicado_sospechoso")),
+      [] as RetiroRow[]
+    ),
+    qTimeout(fetchAllSimple<VetRow>(admin, "veterinarias", "id,nombre,zona_id", (q) => q), [] as VetRow[]),
+    qTimeout(admin.from("personal").select("id,nombre").order("nombre").then((r) => (r.data as PersonalRow[]) ?? []), [] as PersonalRow[]),
+    qTimeout(admin.from("zonas").select("id,nombre").order("nombre").then((r) => (r.data as ZonaRow[]) ?? []), [] as ZonaRow[]),
     // Productividad de preanalítica + tiempo de control: controles del mes en curso.
-    (async () => {
+    qTimeout((async () => {
       const countQ = admin.from("control_preanalitica")
         .select("id, retiro:retiro_id!inner(fecha_operativa)", { count: "exact", head: true })
         .neq("estado", "pendiente").gte("retiro.fecha_operativa", firstDayMonth);
@@ -94,9 +112,9 @@ export default async function DashboardPage() {
         )
       );
       return chunks.flatMap((c) => (c.data as unknown as ControlMesRow[]) ?? []);
-    })(),
+    })(), [] as ControlMesRow[]),
     // Cobranzas en efectivo del mes en curso.
-    (async () => {
+    qTimeout((async () => {
       const countQ = admin.from("control_cobranzas")
         .select("id, retiro:retiro_id!inner(fecha_operativa)", { count: "exact", head: true })
         .gte("retiro.fecha_operativa", firstDayMonth);
@@ -113,10 +131,10 @@ export default async function DashboardPage() {
         )
       );
       return chunks.flatMap((c) => (c.data as unknown as CobranzaMesRow[]) ?? []);
-    })(),
-    admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "ok").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0),
-    admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "observado").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0),
-    admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "rechazado").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0),
+    })(), [] as CobranzaMesRow[]),
+    qTimeout(admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "ok").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0), 0),
+    qTimeout(admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "observado").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0), 0),
+    qTimeout(admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "rechazado").gte("updated_at", firstDayMonth).then((r) => r.count ?? 0), 0),
     // A diferencia de los otros conteos de esta sección (que miran el mes en
     // curso), este es un acumulado histórico de TODO lo pendiente — por eso
     // necesita las mismas exclusiones que la bandeja real (retiros anulados
@@ -124,16 +142,19 @@ export default async function DashboardPage() {
     // siempre porque nadie los procesa; sin este join se sumaban igual y
     // el KPI mostraba cientos de pendientes "fantasma" que no existen en
     // la bandeja de preanalítica).
-    admin.from("control_preanalitica")
-      .select("id, retiro:retiro_id!inner(anulado, estado)", { count: "exact", head: true })
-      .eq("estado", "pendiente").eq("cancelado", false)
-      .eq("retiro.anulado", false).neq("retiro.estado", "duplicado_sospechoso")
-      .then((r) => r.count ?? 0),
+    qTimeout(
+      admin.from("control_preanalitica")
+        .select("id, retiro:retiro_id!inner(anulado, estado)", { count: "exact", head: true })
+        .eq("estado", "pendiente").eq("cancelado", false)
+        .eq("retiro.anulado", false).neq("retiro.estado", "duplicado_sospechoso")
+        .then((r) => r.count ?? 0),
+      0
+    ),
     // ---- Mes anterior (para el Scorecard: compara mes en curso vs mes cerrado) ----
-    admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "ok").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0),
-    admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "observado").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0),
-    admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "rechazado").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0),
-    (async () => {
+    qTimeout(admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "ok").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0), 0),
+    qTimeout(admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "observado").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0), 0),
+    qTimeout(admin.from("control_preanalitica").select("id", { count: "exact", head: true }).eq("estado", "rechazado").gte("updated_at", firstDayPrevMonth).lt("updated_at", firstDayMonth).then((r) => r.count ?? 0), 0),
+    qTimeout((async () => {
       const countQ = admin.from("control_preanalitica")
         .select("id, retiro:retiro_id!inner(fecha_operativa)", { count: "exact", head: true })
         .neq("estado", "pendiente").gte("retiro.fecha_operativa", firstDayPrevMonth).lt("retiro.fecha_operativa", firstDayMonth);
@@ -157,8 +178,8 @@ export default async function DashboardPage() {
         return ms > 0 ? ms / 3600000 : null;
       }).filter((v): v is number => v !== null);
       return tiempos.length ? tiempos.reduce((s, v) => s + v, 0) / tiempos.length : 0;
-    })(),
-    (async () => {
+    })(), 0),
+    qTimeout((async () => {
       const countQ = admin.from("control_cobranzas")
         .select("id, retiro:retiro_id!inner(fecha_operativa)", { count: "exact", head: true })
         .gte("retiro.fecha_operativa", firstDayPrevMonth).lt("retiro.fecha_operativa", firstDayMonth);
@@ -175,7 +196,7 @@ export default async function DashboardPage() {
         )
       );
       return chunks.flatMap((c) => (c.data as unknown as CobranzaMesRow[]) ?? []);
-    })(),
+    })(), [] as CobranzaMesRow[]),
   ]);
 
   // ---- Índices compactos (nombre → número) para mandar un payload chico al cliente ----
@@ -265,8 +286,11 @@ export default async function DashboardPage() {
   const respIds = Array.from(validadoPorResponsable.keys());
   const nombrePorResponsable = new Map<string, string>();
   if (respIds.length) {
-    const { data: profs } = await admin.from("profiles").select("id, nombre").in("id", respIds);
-    for (const p of profs ?? []) nombrePorResponsable.set(p.id, p.nombre);
+    const profs = await qTimeout(
+      admin.from("profiles").select("id, nombre").in("id", respIds).then((r) => r.data ?? []),
+      [] as { id: string; nombre: string }[]
+    );
+    for (const p of profs) nombrePorResponsable.set(p.id, p.nombre);
   }
   const cobranzasPorResponsable = Array.from(validadoPorResponsable.entries())
     .map(([id, validado]) => ({ nombre: nombrePorResponsable.get(id) ?? "Sin nombre", validado, pct: efectivoDeclarado ? (validado / efectivoDeclarado) * 100 : 0 }))
