@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import { getMyProfile } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { withTimeout } from "@/lib/supabase/withTimeout";
@@ -9,10 +10,6 @@ import { TableroDireccion, type DashData } from "@/components/dashboard/TableroD
 import { Scorecard } from "@/components/dashboard/Scorecard";
 import { esDireccion, landingPathForRole } from "@/lib/utils/roles";
 import { todayISO } from "@/lib/utils/dates";
-
-// Se recalcula cada 5 minutos: trae ~46k retiros paginados (PostgREST limita a
-// 1000 filas por request), así que no conviene recalcular en cada request.
-export const revalidate = 300;
 
 type RetiroRow = { fecha_operativa: string; personal_id: string; veterinaria_id: string | null; veterinaria_texto_original: string | null; cantidad_muestras: number | null };
 type VetRow = { id: string; nombre: string; zona_id: string | null };
@@ -67,12 +64,21 @@ function isoOfDayIndex(dayIdx: number): string {
   return new Date(dayIdx * 86400000).toISOString().slice(0, 10);
 }
 
-export default async function DashboardPage() {
-  // El Dashboard Operativo es exclusivo de dirección; otros roles van a su landing.
-  const { user, profile: rolRow } = await getMyProfile();
-  if (!user) redirect("/login");
-  if (!esDireccion(rolRow?.rol)) redirect(landingPathForRole(rolRow?.rol));
-
+// Arma TODOS los datos del dashboard (~15 consultas, una de ellas paginada en
+// hasta 47 pedidos en paralelo). Esto NO depende de quién lo mira — son
+// números globales del negocio — así que se cachea con unstable_cache en vez
+// de solo el `export const revalidate` que había antes: esta página lee
+// cookies (getMyProfile) para el chequeo de rol, y eso fuerza a Next a
+// renderizarla dinámica en CADA request, haciendo que `revalidate` no sirviera
+// de nada — cada visita de cada persona de dirección disparaba las ~15
+// consultas (y sus hasta 47 sub-pedidos) de nuevo, de cero. Multiplicado por
+// varias personas mirando el dashboard seguido, eso satura el mismo Supabase
+// que usa todo el resto del sistema (cadetes cargando retiros, preanalítica,
+// cobranzas) — un sospechoso directo del "todo tildado" que reportaron.
+// Envuelto así, se recalcula como máximo una vez cada 5 minutos en TOTAL,
+// sin importar cuánta gente lo mire al mismo tiempo.
+const cargarDatosDashboard = unstable_cache(
+  async (): Promise<DashData> => {
   // Lecturas pesadas con service role (mismo patrón que preanalítica/cobranzas
   // para evitar el bug de "0 filas" por un blip de sesión RLS).
   const admin = createAdminClient();
@@ -336,6 +342,20 @@ export default async function DashboardPage() {
       efectivoValidado: efectivoValidadoPrev,
     },
   };
+
+  return data;
+  },
+  ["dashboard-operativo-data"],
+  { revalidate: 300 }
+);
+
+export default async function DashboardPage() {
+  // El Dashboard Operativo es exclusivo de dirección; otros roles van a su landing.
+  const { user, profile: rolRow } = await getMyProfile();
+  if (!user) redirect("/login");
+  if (!esDireccion(rolRow?.rol)) redirect(landingPathForRole(rolRow?.rol));
+
+  const data = await cargarDatosDashboard();
 
   return (
     <div>
