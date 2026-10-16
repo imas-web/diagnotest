@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import { createClient, getMyProfile } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { withTimeout } from "@/lib/supabase/withTimeout";
 import { MobileHome } from "@/components/mobile/MobileHome";
 import { todayISO } from "@/lib/utils/dates";
@@ -8,6 +10,37 @@ import { todayISO } from "@/lib/utils/dates";
 // cuelga hasta el límite duro de Vercel (300s) en vez de fallar rápido y
 // mostrar la pantalla con lo que sí se pudo traer.
 const DB_TIMEOUT = 15000;
+
+type VetRow = { id: string; codigo: string; nombre: string; telefono: string | null; direccion: string | null };
+
+// El padrón de veterinarias (+3000 filas) es el MISMO para todos los
+// cadetes y cambia poquísimo — antes se repaginaba entero (4 pedidos
+// SECUENCIALES a Supabase) en cada carga de /inicio, de CADA cadete, todo
+// el día. Con ~20+ cadetes abriendo/refrescando la app seguido, eso es
+// carga redundante constante sobre el mismo Supabase que usa todo el resto
+// del sistema. Se cachea 5 minutos: un cambio de veterinaria tarda como
+// mucho eso en reflejarse acá, que es aceptable para este dato.
+const obtenerVeterinariasActivas = unstable_cache(
+  async (): Promise<VetRow[]> => {
+    const admin = createAdminClient();
+    const vets: VetRow[] = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await admin
+        .from("veterinarias")
+        .select("id, codigo, nombre, telefono, direccion")
+        .eq("activa", true)
+        .order("nombre")
+        .range(from, from + PAGE - 1);
+      if (error || !data?.length) break;
+      vets.push(...(data as VetRow[]));
+      if (data.length < PAGE) break;
+    }
+    return vets;
+  },
+  ["veterinarias-activas-cadete"],
+  { revalidate: 300 }
+);
 
 export default async function InicioPage() {
   const { user, profile } = await getMyProfile();
@@ -32,28 +65,14 @@ export default async function InicioPage() {
   const personalId = personal?.id ?? "";
   const zonaNombre = (personal?.zona as { nombre?: string } | null)?.nombre ?? "Sin zona";
 
-  // El API limita a 1000 filas por request; el maestro tiene >3000 veterinarias.
-  // Paginamos para traerlas todas (necesario además para el modo offline del cadete).
-  type VetRow = { id: string; codigo: string; nombre: string; telefono: string | null; direccion: string | null };
-  const vets: VetRow[] = [];
-  const PAGE = 1000;
-  for (let from = 0; ; from += PAGE) {
-    try {
-      const { data, error } = await withTimeout(
-        supabase
-          .from("veterinarias")
-          .select("id, codigo, nombre, telefono, direccion")
-          .eq("activa", true)
-          .order("nombre")
-          .range(from, from + PAGE - 1),
-        DB_TIMEOUT
-      );
-      if (error || !data?.length) break;
-      vets.push(...(data as VetRow[]));
-      if (data.length < PAGE) break;
-    } catch {
-      break; // timeout: seguimos con lo que ya se trajo
-    }
+  // El maestro de veterinarias (>3000 filas, paginado) ahora se trae cacheado
+  // — ver obtenerVeterinariasActivas arriba — en vez de repaginarlo entero
+  // en cada carga de esta pantalla.
+  let vets: VetRow[] = [];
+  try {
+    vets = await withTimeout(obtenerVeterinariasActivas(), DB_TIMEOUT);
+  } catch {
+    // timeout o Supabase lento: seguimos con la pantalla sin el padrón fresco
   }
 
   let pedidos: PedidoMobile[] = [];
