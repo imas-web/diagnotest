@@ -23,6 +23,7 @@ export interface RendicionCadete {
 
 export interface RevisadoRow {
   id: string;
+  personalId: string;
   nombre: string;
   fecha: string;
   totalRecaudado: number;
@@ -306,7 +307,13 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
                     )}
                   </td>
                   <td className="px-3.5 py-2.5">
-                    {conDif && <ResolverDiferencia row={r} />}
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <a href={`/retiros/por-personal?personal=${r.personalId}&fecha=${r.fecha}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-[11px] font-medium text-g700 hover:text-g900 hover:underline whitespace-nowrap">
+                        <i className="ti ti-list-details text-[13px]" /> Ver detalle
+                      </a>
+                      {conDif && <ResolverDiferencia row={r} />}
+                    </div>
                   </td>
                 </tr>
               );
@@ -392,9 +399,13 @@ function CadeteCard({ item, onSaved }: { item: RendicionCadete; onSaved: () => v
         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gy600 bg-white border border-gy200 rounded-full px-2 py-0.5">
           <i className="ti ti-calendar text-[12px] text-gy400" /> {fmtDiaCorto(item.fecha)}
         </span>
-        <span className="ml-auto text-[11px] text-gy400">
+        <span className="text-[11px] text-gy400">
           {item.retirosEfectivo + item.retirosDigital} retiro{item.retirosEfectivo + item.retirosDigital !== 1 ? "s" : ""}
         </span>
+        <a href={`/retiros/por-personal?personal=${item.personalId}&fecha=${item.fecha}`} target="_blank" rel="noopener noreferrer"
+          className="ml-auto flex items-center gap-1 text-[11px] font-medium text-g700 hover:text-g900 hover:underline">
+          <i className="ti ti-list-details text-[13px]" /> Ver detalle
+        </a>
       </div>
 
       {/* Body */}

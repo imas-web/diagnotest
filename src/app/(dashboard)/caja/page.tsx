@@ -135,6 +135,7 @@ export default async function CajaPage({
 
   const revisados: RevisadoRow[] = (revisadosRaw ?? []).map((x) => ({
     id: x.id,
+    personalId: x.personal_id,
     nombre: (x.personal as { nombre?: string } | null)?.nombre ?? "Sin nombre",
     fecha: x.fecha_operativa,
     totalRecaudado: Number(x.total_recaudado ?? 0),
