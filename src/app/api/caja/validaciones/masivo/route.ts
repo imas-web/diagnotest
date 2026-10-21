@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   const [retiros, gastos] = await Promise.all([
     fetchAllRows<{ personal_id: string; fecha_operativa: string }>((from, to) =>
       admin.from("retiros").select("personal_id, fecha_operativa")
-        .is("rendicion_id", null).eq("anulado", false)
+        .is("rendicion_id", null).eq("anulado", false).neq("estado", "duplicado_sospechoso" as never)
         .order("id", { ascending: true })
         .range(from, to)
     ),

@@ -58,10 +58,16 @@ export async function POST(req: Request) {
   // — una fila podía salir en dos "páginas" y sumarse dos veces, sellando
   // una rendición con el total YA inflado (esto no se auto-corrige con un
   // refresh, a diferencia de la lectura en /caja).
+  // Un retiro marcado "duplicado_sospechoso" todavía no está confirmado como
+  // carga real (ver detect_duplicates()) — no se le cobra al cadete por algo
+  // que puede ser la misma visita cargada dos veces. Mismo criterio que ya
+  // usan preanalítica/cobranzas/dashboard; acá faltaba y era justo por lo que
+  // la caja de un cadete podía dar más alto que lo que de verdad recaudó.
   const [retiros, gastos] = await Promise.all([
     fetchAllRows<{ id: string; importe_declarado: number; metodo_pago: string }>((from, to) =>
       admin.from("retiros").select("id, importe_declarado, metodo_pago")
-        .eq("personal_id", personalId).eq("anulado", false).is("rendicion_id", null).eq("fecha_operativa", fecha)
+        .eq("personal_id", personalId).eq("anulado", false).neq("estado", "duplicado_sospechoso" as never)
+        .is("rendicion_id", null).eq("fecha_operativa", fecha)
         .order("id", { ascending: true })
         .range(from, to)
     ),

@@ -48,7 +48,7 @@ export default async function ValidacionesPage() {
     fetchAllRows<RetiroRow>((from, to) =>
       admin.from("retiros")
         .select("personal_id, fecha_operativa, personal:personal_id(nombre)")
-        .is("rendicion_id", null).eq("anulado", false)
+        .is("rendicion_id", null).eq("anulado", false).neq("estado", "duplicado_sospechoso" as never)
         .order("id", { ascending: true })
         .range(from, to)
     ),
