@@ -23,6 +23,7 @@ export interface RendicionCadete {
 
 export interface RevisadoRow {
   id: string;
+  personalId: string;
   nombre: string;
   fecha: string;
   totalRecaudado: number;
@@ -306,7 +307,13 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
                     )}
                   </td>
                   <td className="px-3.5 py-2.5">
-                    {conDif && <ResolverDiferencia row={r} />}
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <a href={`/retiros/por-personal?personal=${r.personalId}&fecha=${r.fecha}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-[11px] font-medium text-g700 hover:text-g900 hover:underline whitespace-nowrap">
+                        <i className="ti ti-list-details text-[13px]" /> Ver detalle
+                      </a>
+                      {conDif && <ResolverDiferencia row={r} />}
+                    </div>
                   </td>
                 </tr>
               );
