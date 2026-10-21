@@ -55,7 +55,7 @@ export default async function CajaPage({
     fetchAllRows((from, to) =>
       admin.from("retiros")
         .select("personal_id, importe_declarado, metodo_pago, fecha_operativa, personal:personal_id(nombre)")
-        .is("rendicion_id", null).eq("anulado", false).lte("fecha_operativa", fecha)
+        .is("rendicion_id", null).eq("anulado", false).neq("estado", "duplicado_sospechoso" as never).lte("fecha_operativa", fecha)
         .order("id", { ascending: true })
         .range(from, to)
     ),
