@@ -27,7 +27,7 @@ export function GastosAuthClient({ gastos }: { gastos: Gasto[] }) {
   const [obsInputs, setObsInputs] = useState<Record<string, string>>({});
   const [obsOpen, setObsOpen] = useState<Record<string, boolean>>({});
   const [live, setLive] = useState(false);
-  const [filtro, setFiltro] = useState<"todos" | "gastos" | "retiros" | "personal">("todos");
+  const [filtro, setFiltro] = useState<"todos" | "gastos" | "retiros" | "observados" | "personal">("todos");
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Realtime: refresca el panel cuando un cadete carga / cambia un gasto
@@ -58,10 +58,11 @@ export function GastosAuthClient({ gastos }: { gastos: Gasto[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Filtro por tipo. "personal" no filtra: agrupa la lista por cadete.
+  // Filtro por tipo/estado. "personal" no filtra: agrupa la lista por cadete.
   const matchesFiltro = (g: Gasto) =>
     filtro === "gastos" ? g.tipo !== "retiro_dinero"
     : filtro === "retiros" ? g.tipo === "retiro_dinero"
+    : filtro === "observados" ? g.estado === "observado"
     : true;
   const visibles = gastos.filter(matchesFiltro);
 
@@ -173,7 +174,7 @@ export function GastosAuthClient({ gastos }: { gastos: Gasto[] }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          {([["todos", "Todos"], ["gastos", "Gastos"], ["retiros", "Retiros"], ["personal", "Por personal"]] as const).map(([key, label]) => (
+          {([["todos", "Todos"], ["gastos", "Gastos"], ["retiros", "Retiros"], ["observados", "Observados"], ["personal", "Por personal"]] as const).map(([key, label]) => (
             <button key={key} onClick={() => setFiltro(key)}
               className={`px-3 py-1.5 rounded-full border text-[11px] transition-all ${filtro === key ? "bg-g800 text-white border-g800" : "bg-white text-gy600 border-gy200 hover:border-g400 hover:text-g700"}`}>{label}</button>
           ))}
