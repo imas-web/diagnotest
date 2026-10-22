@@ -454,9 +454,9 @@ export function TableroDireccion({ data }: { data: DashData }) {
       {/* Cobranzas */}
       <SectionTitle icon="💵" title="Cobranzas · solo efectivo" pill="⚠ vista parcial — no incluye otros medios de pago" pillTone="warn" />
       <div className="grid grid-cols-3 gap-3.5 max-[900px]:grid-cols-2 max-[560px]:grid-cols-1">
-        <Kpi label="Efectivo declarado (mes)" value={fmtMoneySign(data.cobranzas.efectivoDeclarado)} accent="warn" />
+        <Kpi label="Efectivo declarado (mes)" value={fmtMoneySign(data.cobranzas.efectivoDeclarado)} accent="warn" foot={<span className="text-gy400 text-[12px]">con 3+ días hábiles</span>} />
         <Kpi label="Efectivo validado (mes)" value={fmtMoneySign(data.cobranzas.efectivoValidado)} accent="warn" />
-        <Kpi label="Cobranzas pendientes" value={fmt(data.cobranzas.pendientes)} accent="warn" foot={<span className="text-gy400 text-[12px]">sin validar</span>} />
+        <Kpi label="Cobranzas pendientes" value={fmt(data.cobranzas.pendientes)} accent="warn" foot={<span className="text-gy400 text-[12px]">sin validar, 3+ días hábiles</span>} />
       </div>
 
       {/* Próximamente */}

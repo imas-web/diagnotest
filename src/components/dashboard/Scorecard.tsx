@@ -323,7 +323,7 @@ export function Scorecard({ data }: { data: DashData }) {
         id: "cob-mes", label: "Efectivo validado (mes)", cadence: "mensual", unit: "pct",
         raw: cobActualPct, value: fmtPct(cobActualPct), metaValue: cobPrevPct,
         metaLabel: `${fmtMoney(data.cobranzas.efectivoValidado)} de ${fmtMoney(data.cobranzas.efectivoDeclarado)} declarado`,
-        metaBasis: "Porcentaje del efectivo declarado que ya fue validado por cobranzas. La meta es no empeorar respecto al mes anterior; tolerancia ±3% verde, ±10% amarillo.",
+        metaBasis: "Porcentaje del efectivo declarado (con al menos 3 días hábiles de antigüedad, el tiempo normal que tarda el circuito) que ya fue validado por cobranzas. Lo declarado más reciente no entra en la cuenta porque todavía no tuvo tiempo de procesarse. La meta es no empeorar respecto al mes anterior; tolerancia ±3% verde, ±10% amarillo.",
         tone: tone(cobActualPct, cobPrevPct, "higher", 0.97, 0.90),
         deltaLabel: cobPrevPct != null ? <>mes anterior: {fmtPct(cobPrevPct)}</> : undefined,
         serie: serieCob,
