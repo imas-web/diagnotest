@@ -5,7 +5,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { PillStatus } from "@/components/ui/PillStatus";
 import { ReintentarRecibo } from "@/components/cobranzas/ReintentarRecibo";
 import { fmtMoneySign } from "@/lib/utils/format";
-import { formatDateTime } from "@/lib/utils/dates";
+import { formatDate, formatDateTime } from "@/lib/utils/dates";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>;
@@ -42,7 +42,7 @@ export default async function CobranzasValidadosPage({
 
   let query = supabase
     .from("control_cobranzas")
-    .select("*, retiro:retiro_id(id, codigo_original, veterinaria_texto_original, metodo_pago, personal:personal_id(nombre))")
+    .select("*, retiro:retiro_id(id, codigo_original, veterinaria_texto_original, metodo_pago, fecha_operativa, personal:personal_id(nombre))")
     .eq("estado", "adjudicado")
     .order("updated_at", { ascending: false })
     .limit(500);
@@ -130,7 +130,7 @@ export default async function CobranzasValidadosPage({
             <table className="w-full border-collapse text-[12px]">
               <thead>
                 <tr className="bg-gy50">
-                  {["Fecha", "Personal", "Veterinaria", "Código", "Importe", "Medio", "Observación", "Autorizado por", "Estado", "Recibo SGE"].map((h) => (
+                  {["Fecha retiro", "Fecha adjudicación", "Personal", "Veterinaria", "Código", "Importe", "Medio", "Observación", "Autorizado por", "Estado", "Recibo SGE"].map((h) => (
                     <th key={h} className="px-3.5 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gy400 border-b border-gy200">{h}</th>
                   ))}
                 </tr>
@@ -140,7 +140,7 @@ export default async function CobranzasValidadosPage({
                   <Fragment key={`dia-${dia.fecha}`}>
                     {/* Encabezado del día con total general del día */}
                     <tr className="bg-g800/[0.04]">
-                      <td colSpan={4} className="px-3.5 py-2 text-[12px] font-bold text-g800 border-b border-gy200 capitalize">
+                      <td colSpan={5} className="px-3.5 py-2 text-[12px] font-bold text-g800 border-b border-gy200 capitalize">
                         {etiquetaFecha(dia.fecha)}
                       </td>
                       <td colSpan={6} className="px-3.5 py-2 text-[12px] font-bold text-g800 border-b border-gy200 text-right">
@@ -154,6 +154,7 @@ export default async function CobranzasValidadosPage({
                           const r = c.retiro as AnyRecord;
                           return (
                             <tr key={c.id} className="bg-white hover:bg-gy50 border-b border-gy100">
+                              <td className="px-3.5 py-2.5 text-gy600 whitespace-nowrap">{r?.fecha_operativa ? formatDate(r.fecha_operativa) : "—"}</td>
                               <td className="px-3.5 py-2.5 text-gy600 whitespace-nowrap">{formatDateTime(c.updated_at)}</td>
                               <td className="px-3.5 py-2.5 font-medium">{r?.personal?.nombre ?? "—"}</td>
                               <td className="px-3.5 py-2.5 max-w-[180px] truncate text-gy500" title={r?.veterinaria_texto_original ?? ""}>{r?.veterinaria_texto_original ?? "—"}</td>
@@ -184,7 +185,7 @@ export default async function CobranzasValidadosPage({
                         })}
                         {/* Subtotal por veterinaria (debajo del grupo, color diferenciado) */}
                         <tr className="bg-g50 border-b-2 border-gy200">
-                          <td className="px-3.5 py-1.5 text-[11px] font-semibold text-g700 uppercase tracking-wide" colSpan={2}>
+                          <td className="px-3.5 py-1.5 text-[11px] font-semibold text-g700 uppercase tracking-wide" colSpan={3}>
                             Subtotal
                           </td>
                           <td className="px-3.5 py-1.5 font-semibold text-g800" colSpan={2} title={g.vete}>
@@ -200,7 +201,7 @@ export default async function CobranzasValidadosPage({
                   </Fragment>
                 ))}
                 {!controles?.length && (
-                  <tr><td colSpan={10} className="py-10 text-center text-gy400">Sin validaciones en el período</td></tr>
+                  <tr><td colSpan={11} className="py-10 text-center text-gy400">Sin validaciones en el período</td></tr>
                 )}
               </tbody>
             </table>
