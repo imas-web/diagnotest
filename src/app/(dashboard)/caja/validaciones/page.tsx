@@ -55,7 +55,7 @@ export default async function ValidacionesPage() {
     fetchAllRows<GastoDif>((from, to) =>
       admin.from("gastos")
         .select("personal_id, fecha_operativa")
-        .is("rendicion_id", null).eq("tipo", "diferencia_caja")
+        .is("rendicion_id", null).eq("tipo", "diferencia_caja").is("invalidada_en", null)
         .order("id", { ascending: true })
         .range(from, to)
     ),
