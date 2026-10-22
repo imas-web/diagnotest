@@ -16,7 +16,10 @@ type VetRow = { id: string; nombre: string; zona_id: string | null };
 type PersonalRow = { id: string; nombre: string };
 type ZonaRow = { id: string; nombre: string };
 type ControlMesRow = { estado: string; responsable_2: string | null; updated_at: string; retiro: { timestamp_carga: string } | { timestamp_carga: string }[] | null };
-type CobranzaMesRow = { estado: string; importe_declarado: number | null; importe_validado: number | null; responsable_id: string | null };
+type CobranzaMesRow = {
+  estado: string; importe_declarado: number | null; importe_validado: number | null; responsable_id: string | null;
+  retiro: { fecha_operativa: string } | { fecha_operativa: string }[] | null;
+};
 
 // Sin esto, si una sola de las ~15 consultas pesadas de este dashboard
 // (todas por el cliente admin) responde lenta, TODO el Promise.all se
@@ -84,6 +87,25 @@ const cargarDatosDashboard = unstable_cache(
   const admin = createAdminClient();
   const today = todayISO();
   const firstDayMonth = today.slice(0, 7) + "-01";
+
+  // Cobranzas necesita unos días hábiles para adjudicar cada cobro declarado
+  // — no es atraso, es el tiempo normal del circuito. Sin este corte, lo
+  // declarado ayer/hoy mismo cuenta como "sin validar" en el denominador del
+  // mes en curso aunque nadie se esté durmiendo, y el % se ve mal comparado
+  // contra un mes anterior ya CERRADO (que tuvo el mes entero para ponerse al
+  // día). Se usa solo para el mes en curso — un mes cerrado ya tuvo tiempo de sobra.
+  function restarDiasHabiles(fechaISO: string, n: number): string {
+    const [y, m, d] = fechaISO.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    let restantes = n;
+    while (restantes > 0) {
+      dt.setUTCDate(dt.getUTCDate() - 1);
+      const diaSemana = dt.getUTCDay(); // 0 = domingo, 6 = sábado
+      if (diaSemana !== 0 && diaSemana !== 6) restantes--;
+    }
+    return dt.toISOString().slice(0, 10);
+  }
+  const limiteCobranzaMaduro = restarDiasHabiles(today, 3);
   const [fy, fm] = firstDayMonth.split("-").map(Number);
   const firstDayPrevMonth = new Date(Date.UTC(fy, fm - 2, 1)).toISOString().slice(0, 10);
 
@@ -282,14 +304,21 @@ const cargarDatosDashboard = unstable_cache(
   const cargaPorHora = Array.from(porHora.entries()).map(([hora, count]) => ({ hora, count })).sort((a, b) => a.hora - b.hora);
 
   // ---- Cobranzas · solo efectivo (mes en curso) ----
-  const efectivoDeclarado = cobranzasMes.reduce((s, c) => s + (c.importe_declarado ?? 0), 0);
-  const efectivoValidado = cobranzasMes.filter((c) => c.estado !== "pendiente").reduce((s, c) => s + (c.importe_validado ?? c.importe_declarado ?? 0), 0);
-  const cobranzasPendientes = cobranzasMes.filter((c) => c.estado === "pendiente").length;
+  // Solo entran los declarados con al menos 3 días hábiles de antigüedad —
+  // ver restarDiasHabiles arriba. Lo más reciente queda afuera del % porque
+  // todavía no tuvo tiempo real de procesarse, no porque cobranzas esté atrasada.
+  const cobranzasMesMaduras = cobranzasMes.filter((c) => {
+    const retiro = Array.isArray(c.retiro) ? c.retiro[0] : c.retiro;
+    return (retiro?.fecha_operativa ?? "") <= limiteCobranzaMaduro;
+  });
+  const efectivoDeclarado = cobranzasMesMaduras.reduce((s, c) => s + (c.importe_declarado ?? 0), 0);
+  const efectivoValidado = cobranzasMesMaduras.filter((c) => c.estado !== "pendiente").reduce((s, c) => s + (c.importe_validado ?? c.importe_declarado ?? 0), 0);
+  const cobranzasPendientes = cobranzasMesMaduras.filter((c) => c.estado === "pendiente").length;
 
   // Aporte de cada responsable de cobranzas al % validado del mes (quién
   // adjudicó qué parte del efectivo declarado por logística).
   const validadoPorResponsable = new Map<string, number>();
-  for (const c of cobranzasMes) {
+  for (const c of cobranzasMesMaduras) {
     if (c.estado === "pendiente" || !c.responsable_id) continue;
     validadoPorResponsable.set(c.responsable_id, (validadoPorResponsable.get(c.responsable_id) ?? 0) + (c.importe_validado ?? c.importe_declarado ?? 0));
   }
