@@ -25,11 +25,12 @@ interface Props {
   pedidos: PedidoMobile[];
   retirosHoy: RetiroResumen[];
   totalGastosHoy: number;
+  diferenciaCajaDesactualizada?: boolean;
 }
 
 type Tab = "resumen" | "retiro" | "pedidos" | "gastos";
 
-export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterinarias, pedidos, retirosHoy, totalGastosHoy }: Props) {
+export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterinarias, pedidos, retirosHoy, totalGastosHoy, diferenciaCajaDesactualizada }: Props) {
   const router = useRouter();
   const { isOffline } = useOffline();
   // El layout del cadete no monta Topbar/DashboardShell, así que la cola de
@@ -477,6 +478,19 @@ export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterina
             <button onClick={() => sync()} className="text-[11px] font-semibold underline shrink-0">Reintentar</button>
           )}
         </div>
+
+        {/* Diferencia de caja desactualizada: declaró su efectivo y después
+            cargó/editó un retiro de hoy — ya no vale, tiene que confirmar de nuevo. */}
+        {diferenciaCajaDesactualizada && (
+          <button onClick={() => { setTab("gastos"); setGTipo("diferencia_caja"); }}
+            className="w-full flex items-center gap-2.5 bg-amber-bg border-2 border-amber/50 rounded-[12px] px-3.5 py-3 text-left">
+            <i className="ti ti-alert-triangle text-[18px] text-amber-text shrink-0" />
+            <span className="flex-1 text-[12px] font-semibold text-amber-text">
+              Cargaste un retiro después de validar tu caja — volvé a confirmar tu efectivo
+            </span>
+            <i className="ti ti-chevron-right text-[16px] text-amber-text shrink-0" />
+          </button>
+        )}
 
         {/* Banner pedidos */}
         {bannerOpen && pedidos.length > 0 && (

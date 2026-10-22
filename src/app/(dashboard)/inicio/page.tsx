@@ -158,20 +158,26 @@ export default async function InicioPage() {
 
   // Gastos de la caja abierta de hoy (sin rendir todavía) — para mostrarle al
   // cadete cuánto efectivo debería tener en la mano (ingreso en efectivo menos
-  // estos gastos), sin que tenga que hacer la cuenta a mano.
+  // estos gastos), sin que tenga que hacer la cuenta a mano. Una diferencia de
+  // caja "invalidada" (declaró su conteo y DESPUÉS cargó/editó un retiro de
+  // hoy) no entra en la cuenta — ya no representa el efectivo actual — pero no
+  // se pierde: se le avisa al cadete que tiene que volver a confirmarla.
   let totalGastosHoy = 0;
+  let diferenciaCajaDesactualizada = false;
   if (personalId) {
     try {
       const { data } = await withTimeout(
         supabase
           .from("gastos")
-          .select("monto")
+          .select("monto, tipo, invalidada_en")
           .eq("personal_id", personalId)
           .eq("fecha_operativa", todayISO())
           .is("rendicion_id", null),
         DB_TIMEOUT
       );
-      totalGastosHoy = (data ?? []).reduce((s, g) => s + Number(g.monto ?? 0), 0);
+      const gastos = data ?? [];
+      totalGastosHoy = gastos.filter((g) => !g.invalidada_en).reduce((s, g) => s + Number(g.monto ?? 0), 0);
+      diferenciaCajaDesactualizada = gastos.some((g) => g.tipo === "diferencia_caja" && g.invalidada_en);
     } catch {
       // timeout: queda en 0 en vez de colgar toda la página
     }
@@ -181,6 +187,7 @@ export default async function InicioPage() {
     <MobileHome
       nombre={profile?.nombre ?? personal?.nombre ?? "Personal"}
       zonaNombre={zonaNombre}
+      diferenciaCajaDesactualizada={diferenciaCajaDesactualizada}
       personalId={personalId}
       profileId={user.id}
       veterinarias={vets ?? []}

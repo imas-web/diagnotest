@@ -71,8 +71,8 @@ export async function POST(req: Request) {
         .order("id", { ascending: true })
         .range(from, to)
     ),
-    fetchAllRows<{ id: string; monto: number }>((from, to) =>
-      admin.from("gastos").select("id, monto")
+    fetchAllRows<{ id: string; monto: number; invalidada_en: string | null }>((from, to) =>
+      admin.from("gastos").select("id, monto, invalidada_en")
         .eq("personal_id", personalId).is("rendicion_id", null).eq("fecha_operativa", fecha)
         .order("id", { ascending: true })
         .range(from, to)
@@ -83,6 +83,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "El cadete no tiene una caja abierta para validar" }, { status: 400 });
   }
 
+  // Una diferencia de caja desactualizada (el cadete cargó/editó un retiro
+  // después de declararla) sigue sellándose junto con el resto — ya es
+  // historial, Dirección está validando con el dato real a mano — pero no
+  // cuenta para el cálculo: ya no representa el efectivo actual.
+  const gastosVigentes = gastos.filter((g) => !g.invalidada_en);
+
   let totalEfectivo = 0, totalDigital = 0;
   for (const r of retiros ?? []) {
     const m = Number(r.importe_declarado ?? 0);
@@ -90,7 +96,7 @@ export async function POST(req: Request) {
     else totalDigital += m;
   }
   const totalRecaudado = totalEfectivo + totalDigital;
-  const totalGastos = (gastos ?? []).reduce((s, g) => s + Number(g.monto ?? 0), 0);
+  const totalGastos = gastosVigentes.reduce((s, g) => s + Number(g.monto ?? 0), 0);
   const efectivoEsperado = totalEfectivo - totalGastos;
 
   // Importe validado: si no hay diferencia coincide con el esperado.
