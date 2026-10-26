@@ -7,6 +7,15 @@ export function esDireccion(rol: string | null | undefined): boolean {
   return !!rol && (ROLES_DIRECCION as readonly string[]).includes(rol);
 }
 
+// Reportes puntuales que no corresponden a todo un rol (ej. todo "dueño"),
+// sino a cuentas específicas que se fueron habilitando a pedido. Lista corta
+// a mano: si esto crece, conviene pasar a un flag en profiles.
+const EMAILS_REPORTES_AVANZADOS = ["imas@diagnotest.com.ar", "martin.scarfo@diagnotest.com"];
+
+export function puedeVerReportesAvanzados(email: string | null | undefined): boolean {
+  return !!email && EMAILS_REPORTES_AVANZADOS.includes(email.trim().toLowerCase());
+}
+
 export function landingPathForRole(rol: string | null | undefined): string {
   switch (rol) {
     case "personal_logistica":
