@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils/format";
 import { createClient } from "@/lib/supabase/client";
+import { puedeVerReportesAvanzados } from "@/lib/utils/roles";
 import type { Profile } from "@/types";
 import { initials } from "@/lib/utils/format";
 
@@ -118,6 +119,12 @@ export function Sidebar({ profile, onNavigate }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const navItems = getNavItems(profile.rol);
+  // Reporte habilitado por cuenta puntual, no por rol — ver puedeVerReportesAvanzados.
+  if (puedeVerReportesAvanzados(profile.email)) {
+    const iDashboard = navItems.findIndex((i) => i.href === "/dashboard");
+    navItems.splice(iDashboard >= 0 ? iDashboard + 1 : 0, 0,
+      { href: "/reportes/veterinarias", label: "Veterinarias · movimiento", icon: "ti-trending-up" });
+  }
 
   // Badges reales (en vez de números fijos). Se recalculan al navegar, al
   // volver a la pestaña y cuando una acción dispara el evento "badges:refresh".
