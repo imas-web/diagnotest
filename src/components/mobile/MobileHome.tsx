@@ -11,9 +11,10 @@ import { todayISO, nowISO, formatDateTime } from "@/lib/utils/dates";
 import { initials, fmtMoneySign } from "@/lib/utils/format";
 import { notificarNuevoPedido, pedirPermisoNotificaciones } from "@/lib/utils/notificaciones";
 import { normVet } from "@/lib/pedidos/match";
-import { VeterinariaPicker, type VetOption } from "@/components/mobile/VeterinariaPicker";
 import type { MetodoPago } from "@/types";
 import type { PedidoMobile, RetiroResumen } from "@/app/(dashboard)/inicio/page";
+
+interface VetOption { id: string; codigo: string; nombre: string; telefono: string | null; direccion: string | null }
 
 interface Props {
   nombre: string;
@@ -160,11 +161,17 @@ export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterina
     return supabase.storage.from("comprobantes").getPublicUrl(path).data.publicUrl;
   }
 
-  // Elegir una vet del picker es la ÚNICA forma de cargar vetId/vetTexto/código
-  // — nunca texto tipeado a mano (ver VeterinariaPicker).
-  function elegirVet(v: { id: string; codigo: string; nombre: string } | null) {
-    if (v) { setVetId(v.id); setVetTexto(v.nombre); setCodigo(v.codigo); }
-    else { setVetId(null); setVetTexto(""); setCodigo(""); }
+  function matchVet(value: string) {
+    setVetTexto(value);
+    const val = value.trim();
+    const valNorm = normVet(val);
+    // Coincidencia por valor combinado "código — nombre", por código o por nombre.
+    // Se normaliza (acentos/espacios/mayúsculas) para que escribir el nombre de una
+    // vete conocida resuelva siempre su código maestro, sin importar tildes ni espacios.
+    const m = veterinarias.find((v) => `${v.codigo} — ${v.nombre}` === val)
+      ?? veterinarias.find((v) => normVet(v.codigo) === valNorm)
+      ?? veterinarias.find((v) => normVet(v.nombre) === valNorm);
+    if (m) { setVetId(m.id); setCodigo(m.codigo); } else { setVetId(null); }
   }
 
   function abrirPedido(p: PedidoMobile) {
@@ -233,7 +240,7 @@ export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterina
 
   async function guardarRetiro() {
     if (!personalId) { toast("error", "No se encontró tu perfil de personal"); return; }
-    if (!vetId) { toast("error", "Elegí una veterinaria de la lista"); return; }
+    if (!vetTexto.trim()) { toast("error", "Indicá la veterinaria"); return; }
     if (!muestras.trim() || parseInt(muestras) < 0) { toast("error", "Ingresá la cantidad de muestras"); return; }
     if (!importe.trim() || parseFloat(importe) < 0) { toast("error", "Ingresá el importe"); return; }
     const hayPago = parseFloat(importe) > 0;
@@ -623,14 +630,20 @@ export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterina
             )}
             <div>
               <label className="block text-[11px] font-semibold text-gy600 mb-1.5">Veterinaria <span className="text-red-500">*</span></label>
-              <VeterinariaPicker
-                veterinarias={veterinarias}
-                selected={vetSel}
-                onSelect={elegirVet}
-                textoSinVincular={!vetSel && vetTexto ? vetTexto : undefined}
-              />
+              <input list="mob-vets" required className={inputCls} placeholder="Buscar por nombre o código..."
+                value={vetTexto} onChange={(e) => matchVet(e.target.value)} />
+              <datalist id="mob-vets">
+                {veterinarias.map((v) => <option key={v.id} value={`${v.codigo} — ${v.nombre}`} />)}
+              </datalist>
               {vetSel && (
                 <div className="mt-2 flex flex-col gap-1.5 bg-g50 border border-g200 rounded-[10px] px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <i className="ti ti-building-store text-[17px] text-g600 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-mono text-[18px] font-bold text-gy900 leading-tight">{vetSel.codigo || "S/C"}</div>
+                      <div className="text-[12px] text-gy500 truncate">{vetSel.nombre}</div>
+                    </div>
+                  </div>
                   {vetSel.telefono && (
                     <a href={`tel:${vetSel.telefono.replace(/\s+/g, "")}`}
                       className="flex items-center gap-2 text-[13px] font-semibold text-g700">
