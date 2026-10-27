@@ -2,8 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ControlCard } from "@/components/ui/ControlCard";
 import { exportToExcel } from "@/lib/utils/export";
+import { toast } from "@/components/ui/ToastNotification";
+import { fmtMoneySign } from "@/lib/utils/format";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>;
@@ -26,7 +29,11 @@ export function CobranzasBandeja({
   controles: AnyRecord[]; total: number; q: string; fecha: string;
   cadete: string; cadetes: { id: string; nombre: string }[]; ver: number;
 }) {
+  const router = useRouter();
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [modoSeleccion, setModoSeleccion] = useState(false);
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
+  const [adjudicando, setAdjudicando] = useState<{ hecho: number; total: number } | null>(null);
 
   const ordenados = useMemo(() => {
     const arr = [...controles];
@@ -49,6 +56,73 @@ export function CobranzasBandeja({
 
   const hayMas = controles.length < total;
   const masHref = { pathname: "/cobranzas", query: { ...(q ? { q } : {}), ...(fecha ? { fecha } : {}), ...(cadete ? { cadete } : {}), ver: ver + 50 } };
+
+  const idsVisibles = useMemo(() => ordenados.map((c: AnyRecord) => c.id as string), [ordenados]);
+
+  function toggleSeleccion(id: string) {
+    setSeleccionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function seleccionarTodos() { setSeleccionados(new Set(idsVisibles)); }
+  function salirDeSeleccion() { setModoSeleccion(false); setSeleccionados(new Set()); }
+
+  // Adjudica varias cobranzas de una — mismo criterio que el botón individual
+  // de cada ficha: confirma el importe declarado tal cual, sin diferencias
+  // (si alguna tiene una diferencia real, se resuelve aparte, no acá). Va una
+  // por una (no en paralelo) porque cada adjudicación genera un recibo real
+  // en Interpracsys — no conviene mandarle ráfagas, y así se puede mostrar
+  // el progreso mientras corre.
+  async function adjudicarSeleccionados() {
+    const items = ordenados.filter((c: AnyRecord) => seleccionados.has(c.id));
+    if (!items.length) return;
+    const montoTotal = items.reduce((s: number, c: AnyRecord) => s + (Number(c.retiro?.importe_declarado) || 0), 0);
+    const ok = window.confirm(
+      `¿Adjudicar ${items.length} cobranza(s) por un total de ${fmtMoneySign(montoTotal)}?\n\n` +
+      "Se confirma el importe declarado tal cual (sin diferencias) y se genera un recibo en Interpracsys " +
+      "por cada una. Si alguna tiene una diferencia real, resolvela individual en vez de incluirla acá."
+    );
+    if (!ok) return;
+
+    setAdjudicando({ hecho: 0, total: items.length });
+    let adjudicadas = 0;
+    const reciboFallidos: string[] = [];
+    const erroresDuros: string[] = [];
+    for (const c of items) {
+      const res = await fetch("/api/cobranzas/validar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          controlId: c.id,
+          estado: "adjudicado",
+          importeValidado: Number(c.retiro?.importe_declarado) || 0,
+        }),
+      });
+      const etiqueta = c.retiro?.codigo_original || String(c.id).slice(0, 8).toUpperCase();
+      if (!res.ok) {
+        erroresDuros.push(etiqueta);
+      } else {
+        adjudicadas++;
+        const json = await res.json().catch(() => ({}));
+        if (json.recibo && json.recibo.ok === false) reciboFallidos.push(etiqueta);
+      }
+      setAdjudicando((prev) => (prev ? { ...prev, hecho: prev.hecho + 1 } : prev));
+    }
+    setAdjudicando(null);
+
+    if (erroresDuros.length) {
+      toast("warning", `${adjudicadas} adjudicada(s) ✓ · ${erroresDuros.length} no se pudieron adjudicar (${erroresDuros.slice(0, 5).join(", ")}${erroresDuros.length > 5 ? "…" : ""})`);
+    } else if (reciboFallidos.length) {
+      toast("warning", `${adjudicadas} adjudicada(s) ✓, pero el recibo en Interpracsys falló en ${reciboFallidos.length} (reintentalas desde su ficha: ${reciboFallidos.slice(0, 5).join(", ")}${reciboFallidos.length > 5 ? "…" : ""})`);
+    } else {
+      toast("success", `${adjudicadas} cobranza(s) adjudicadas ✓`);
+    }
+    salirDeSeleccion();
+    window.dispatchEvent(new Event("badges:refresh"));
+    router.refresh();
+  }
 
   function exportar() {
     const filas = ordenados.map((c: AnyRecord) => ({
@@ -97,8 +171,36 @@ export function CobranzasBandeja({
               <i className="ti ti-file-spreadsheet text-[13px]" /> Exportar Excel
             </button>
           )}
+          {!modoSeleccion && controles.length > 0 && (
+            <button onClick={() => setModoSeleccion(true)}
+              className="px-3 py-1.5 rounded-full border text-[11px] transition-all bg-white text-gy600 border-gy200 hover:border-g400 hover:text-g700 flex items-center gap-1">
+              <i className="ti ti-checkbox text-[13px]" /> Adjudicar varios
+            </button>
+          )}
         </div>
       </div>
+
+      {modoSeleccion && (
+        <div className="flex items-center gap-3 flex-wrap bg-white border-2 border-g200 rounded-[10px] px-3.5 py-2.5 shadow-sm">
+          <span className="text-[12px] font-semibold text-gy700">
+            {seleccionados.size} seleccionado{seleccionados.size === 1 ? "" : "s"}
+          </span>
+          <button type="button" onClick={seleccionarTodos} disabled={!!adjudicando}
+            className="text-[11px] text-g700 underline disabled:opacity-50">Seleccionar todos ({idsVisibles.length})</button>
+          <button
+            onClick={adjudicarSeleccionados}
+            disabled={!seleccionados.size || !!adjudicando}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-g50 text-g700 border border-g200 rounded-[6px] hover:bg-g100 disabled:opacity-50"
+          >
+            {adjudicando
+              ? <span className="w-3 h-3 border-2 border-g300 border-t-g700 rounded-full animate-spin" />
+              : <i className="ti ti-receipt text-[13px]" />}
+            {adjudicando ? `Adjudicando ${adjudicando.hecho}/${adjudicando.total}…` : "Adjudicar seleccionados"}
+          </button>
+          <button type="button" onClick={salirDeSeleccion} disabled={!!adjudicando}
+            className="ml-auto text-[11px] text-gy500 hover:text-gy800 underline disabled:opacity-50">Cancelar</button>
+        </div>
+      )}
       {hayMas && (
         <div className="text-[11px] text-warn600 -mt-2">
           Hay {total - controles.length} pendientes más sin cargar — tocá &quot;Mostrar más&quot; antes de exportar si los querés incluir.
@@ -119,12 +221,30 @@ export function CobranzasBandeja({
                 <span className="text-[11px] text-gy400">({items.length})</span>
                 <div className="flex-1 h-px bg-gy100" />
               </div>
-              {items.map((c) => <ControlCard key={c.id} control={c} tipo="cob" />)}
+              {items.map((c) => (
+                <div key={c.id} className="flex items-start gap-2.5">
+                  {modoSeleccion && (
+                    <input type="checkbox" checked={seleccionados.has(c.id)} onChange={() => toggleSeleccion(c.id)}
+                      disabled={!!adjudicando}
+                      className="w-4 h-4 mt-4 shrink-0 accent-g600" />
+                  )}
+                  <div className="flex-1 min-w-0"><ControlCard control={c} tipo="cob" /></div>
+                </div>
+              ))}
             </div>
           ))
         : (
             <div className="space-y-3.5">
-              {ordenados.map((c: AnyRecord) => <ControlCard key={c.id} control={c} tipo="cob" />)}
+              {ordenados.map((c: AnyRecord) => (
+                <div key={c.id} className="flex items-start gap-2.5">
+                  {modoSeleccion && (
+                    <input type="checkbox" checked={seleccionados.has(c.id)} onChange={() => toggleSeleccion(c.id)}
+                      disabled={!!adjudicando}
+                      className="w-4 h-4 mt-4 shrink-0 accent-g600" />
+                  )}
+                  <div className="flex-1 min-w-0"><ControlCard control={c} tipo="cob" /></div>
+                </div>
+              ))}
             </div>
           )}
 
