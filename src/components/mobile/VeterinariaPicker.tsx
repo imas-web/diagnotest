@@ -35,35 +35,21 @@ export function VeterinariaPicker({
   }, []);
 
   const q = normVet(query);
-  // Código exacto (ej. tipear "431" y que exista justo ese código) resuelve
-  // directo, sin tener que tocar nada — igual que el buscador viejo. El resto
-  // de los casos (nombre, código parcial) sigue mostrando la lista filtrada,
-  // con los que EMPIEZAN con lo tipeado primero (más relevante que los que
-  // solo lo contienen en el medio).
+  // Nunca se autoselecciona solo mientras se escribe (ni por pausa/debounce):
+  // con miles de veterinarias casi cualquier código corto es prefijo de otro
+  // más largo (ej. "2" es Animal World Y el inicio de "266"), así que CUALQUIER
+  // disparo automático termina encerrando al cadete en el código equivocado
+  // a mitad de escritura, sin poder seguir tipeando ni borrar (el campo de
+  // texto desaparece, lo reemplaza la ficha ya elegida). El campo se mantiene
+  // editable y nunca se cierra solo — recién se confirma al TOCAR un
+  // resultado de la lista, o con Enter si coincide exacto con un código.
   const exacto = q.length >= 1 ? veterinarias.find((v) => normVet(v.codigo) === q) : undefined;
-  // Si existe OTRO código que empieza igual (ej. "2" es Animal World, pero
-  // también es el inicio de "266"), el código tipeado es ambiguo — todavía
-  // puede ser que sigan escribiendo uno más largo. No hay debounce que salve
-  // eso (cualquier pausa normal al tipear alcanza para disparar de más), así
-  // que acá NO se autoselecciona solo: tienen que terminar de escribir o
-  // tocar de la lista.
-  const esAmbiguo = !!exacto && veterinarias.some((v) => v.id !== exacto.id && normVet(v.codigo).startsWith(q));
-
-  // Si dejó de tipear un instante y el código es exacto y SIN ambigüedad, lo
-  // selecciona solo — no hace falta tocar nada ni que el Enter del teclado
-  // del celular dispare bien (en mobile/PWA no siempre llega el evento).
-  useEffect(() => {
-    if (!exacto || esAmbiguo) return;
-    const t = setTimeout(() => elegir(exacto), 450);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exacto?.id, esAmbiguo]);
   const rango = (v: VetOption) => {
     if (normVet(v.codigo) === q) return 0; // código exacto primero
     if (normVet(v.codigo).startsWith(q) || normVet(v.nombre).startsWith(q)) return 1;
     return 2;
   };
-  const resultados = q.length < 2 ? [] : veterinarias
+  const resultados = q.length < 1 ? [] : veterinarias
     .filter((v) => normVet(v.codigo).includes(q) || normVet(v.nombre).includes(q))
     .sort((a, b) => rango(a) - rango(b))
     .slice(0, 40);
@@ -74,11 +60,10 @@ export function VeterinariaPicker({
     setOpen(false);
   }
 
-  // El match exacto de código se resuelve con Enter (como el buscador viejo),
-  // no en cada letra tipeada — si se resolviera solo con tipear, un código
-  // corto que sea prefijo de otro más largo (ej. existe el código "43" y el
-  // cadete está tipeando "431") seleccionaría de más antes de que termine de
-  // escribir.
+  // Enter resuelve el código exacto al toque — es una acción explícita del
+  // cadete (a diferencia de una pausa al tipear), así que no hay riesgo de
+  // encerrarlo de más. Si el teclado del celular no dispara el Enter, igual
+  // puede tocar el resultado de la lista (el exacto siempre aparece primero).
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -121,8 +106,8 @@ export function VeterinariaPicker({
       )}
       {open && !selected && (
         <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-white border-2 border-gy200 rounded-[10px] shadow-lg">
-          {q.length < 2 ? (
-            <div className="px-3.5 py-3 text-[12px] text-gy400">Escribí al menos 2 letras para buscar…</div>
+          {q.length < 1 ? (
+            <div className="px-3.5 py-3 text-[12px] text-gy400">Empezá a escribir para buscar…</div>
           ) : resultados.length === 0 ? (
             <div className="px-3.5 py-3 text-[12px] text-gy400">No encontramos ninguna veterinaria. Avisá a logística si falta cargarla.</div>
           ) : (
