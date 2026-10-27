@@ -35,14 +35,38 @@ export function VeterinariaPicker({
   }, []);
 
   const q = normVet(query);
+  // Código exacto (ej. tipear "431" y que exista justo ese código) resuelve
+  // directo, sin tener que tocar nada — igual que el buscador viejo. El resto
+  // de los casos (nombre, código parcial) sigue mostrando la lista filtrada,
+  // con los que EMPIEZAN con lo tipeado primero (más relevante que los que
+  // solo lo contienen en el medio).
+  const exacto = q.length >= 1 ? veterinarias.find((v) => normVet(v.codigo) === q) : undefined;
+  const rango = (v: VetOption) => {
+    if (normVet(v.codigo) === q) return 0; // código exacto primero
+    if (normVet(v.codigo).startsWith(q) || normVet(v.nombre).startsWith(q)) return 1;
+    return 2;
+  };
   const resultados = q.length < 2 ? [] : veterinarias
     .filter((v) => normVet(v.codigo).includes(q) || normVet(v.nombre).includes(q))
+    .sort((a, b) => rango(a) - rango(b))
     .slice(0, 40);
 
   function elegir(v: VetOption) {
     onSelect(v);
     setQuery("");
     setOpen(false);
+  }
+
+  // El match exacto de código se resuelve con Enter (como el buscador viejo),
+  // no en cada letra tipeada — si se resolviera solo con tipear, un código
+  // corto que sea prefijo de otro más largo (ej. existe el código "43" y el
+  // cadete está tipeando "431") seleccionaría de más antes de que termine de
+  // escribir.
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (exacto) { elegir(exacto); return; }
+    if (resultados.length === 1) elegir(resultados[0]);
   }
 
   return (
@@ -72,6 +96,7 @@ export function VeterinariaPicker({
             type="text" value={query}
             onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)}
+            onKeyDown={handleKeyDown}
             placeholder={placeholder}
             className="w-full px-3.5 py-2.5 border-2 border-gy200 rounded-[10px] text-[15px] bg-gy50 focus:outline-none focus:border-g500"
           />
