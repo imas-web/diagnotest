@@ -32,13 +32,20 @@ function etiquetaFecha(iso: string): string {
   });
 }
 
+const ESTADOS_RECIBO = [
+  { value: "", label: "Todos" },
+  { value: "error", label: "Con error" },
+  { value: "ok", label: "OK" },
+  { value: "sin_recibo", label: "Sin recibo" },
+] as const;
+
 export default async function CobranzasValidadosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ desde?: string; hasta?: string; q?: string }>;
+  searchParams: Promise<{ desde?: string; hasta?: string; q?: string; estadoRecibo?: string }>;
 }) {
   const supabase = await createClient();
-  const { desde, hasta, q } = await searchParams;
+  const { desde, hasta, q, estadoRecibo } = await searchParams;
 
   let query = supabase
     .from("control_cobranzas")
@@ -49,6 +56,8 @@ export default async function CobranzasValidadosPage({
 
   if (desde) query = query.gte("updated_at", desde + "T00:00:00Z");
   if (hasta) query = query.lte("updated_at", hasta + "T23:59:59Z");
+  if (estadoRecibo === "sin_recibo") query = query.is("recibo_sge_estado", null);
+  else if (estadoRecibo === "ok" || estadoRecibo === "error") query = query.eq("recibo_sge_estado", estadoRecibo);
 
   const { data: rows } = await query;
 
@@ -119,6 +128,13 @@ export default async function CobranzasValidadosPage({
             <label className="block text-[10px] font-semibold uppercase tracking-wide text-gy400 mb-1">Buscar (cadete, veterinaria, código)</label>
             <input type="text" name="q" defaultValue={q ?? ""} placeholder="Buscar…"
               className="w-full px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[12px] bg-gy50 focus:outline-none focus:border-g500" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-gy400 mb-1">Recibo SGE</label>
+            <select name="estadoRecibo" defaultValue={estadoRecibo ?? ""}
+              className="px-2.5 py-1.5 border-2 border-gy200 rounded-[8px] text-[12px] bg-gy50 focus:outline-none focus:border-g500">
+              {ESTADOS_RECIBO.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
+            </select>
           </div>
           <button type="submit"
             className="px-3.5 py-1.5 bg-g800 text-white text-[12px] font-medium rounded-[8px] hover:bg-g700">Filtrar</button>
