@@ -41,6 +41,18 @@ export function VeterinariaPicker({
   // con los que EMPIEZAN con lo tipeado primero (más relevante que los que
   // solo lo contienen en el medio).
   const exacto = q.length >= 1 ? veterinarias.find((v) => normVet(v.codigo) === q) : undefined;
+
+  // Si dejó de tipear un instante y lo que puso es un código exacto, lo
+  // selecciona solo — no hace falta tocar nada ni que el Enter del teclado
+  // del celular dispare bien (en mobile/PWA no siempre llega el evento). El
+  // debounce (en vez de resolver en cada letra) evita elegir de más a mitad
+  // de escritura cuando un código corto es prefijo de uno más largo.
+  useEffect(() => {
+    if (!exacto) return;
+    const t = setTimeout(() => elegir(exacto), 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exacto?.id]);
   const rango = (v: VetOption) => {
     if (normVet(v.codigo) === q) return 0; // código exacto primero
     if (normVet(v.codigo).startsWith(q) || normVet(v.nombre).startsWith(q)) return 1;
