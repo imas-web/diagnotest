@@ -41,18 +41,23 @@ export function VeterinariaPicker({
   // con los que EMPIEZAN con lo tipeado primero (más relevante que los que
   // solo lo contienen en el medio).
   const exacto = q.length >= 1 ? veterinarias.find((v) => normVet(v.codigo) === q) : undefined;
+  // Si existe OTRO código que empieza igual (ej. "2" es Animal World, pero
+  // también es el inicio de "266"), el código tipeado es ambiguo — todavía
+  // puede ser que sigan escribiendo uno más largo. No hay debounce que salve
+  // eso (cualquier pausa normal al tipear alcanza para disparar de más), así
+  // que acá NO se autoselecciona solo: tienen que terminar de escribir o
+  // tocar de la lista.
+  const esAmbiguo = !!exacto && veterinarias.some((v) => v.id !== exacto.id && normVet(v.codigo).startsWith(q));
 
-  // Si dejó de tipear un instante y lo que puso es un código exacto, lo
+  // Si dejó de tipear un instante y el código es exacto y SIN ambigüedad, lo
   // selecciona solo — no hace falta tocar nada ni que el Enter del teclado
-  // del celular dispare bien (en mobile/PWA no siempre llega el evento). El
-  // debounce (en vez de resolver en cada letra) evita elegir de más a mitad
-  // de escritura cuando un código corto es prefijo de uno más largo.
+  // del celular dispare bien (en mobile/PWA no siempre llega el evento).
   useEffect(() => {
-    if (!exacto) return;
+    if (!exacto || esAmbiguo) return;
     const t = setTimeout(() => elegir(exacto), 450);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exacto?.id]);
+  }, [exacto?.id, esAmbiguo]);
   const rango = (v: VetOption) => {
     if (normVet(v.codigo) === q) return 0; // código exacto primero
     if (normVet(v.codigo).startsWith(q) || normVet(v.nombre).startsWith(q)) return 1;
