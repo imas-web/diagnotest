@@ -379,6 +379,12 @@ function CadeteCard({ item, onSaved }: { item: RendicionCadete; onSaved: () => v
   const yaDiferencia = r?.estado === "diferencia";
   const dif = Number(r?.diferencia ?? 0);
 
+  // Lo que el propio cadete dijo al contar su efectivo (gasto tipo
+  // diferencia_caja) — separado de "Gastos del recorrido" para que Dirección
+  // lo vea de entrada, antes de validar, y pueda cruzarlo con lo que cuenta ella.
+  const declaracionCadete = item.gastos.find((g) => g.tipo === "diferencia_caja");
+  const gastosSinDeclaracion = item.gastos.filter((g) => g.tipo !== "diferencia_caja");
+
   const fmtDiaCorto = (f: string) => { const [, m, d] = f.split("-"); return `${d}/${m}`; };
 
   return (
@@ -410,6 +416,24 @@ function CadeteCard({ item, onSaved }: { item: RendicionCadete; onSaved: () => v
 
       {/* Body */}
       <div className="px-4 py-4">
+        {declaracionCadete && (() => {
+          const monto = Number(declaracionCadete.monto ?? 0);
+          const esOk = monto === 0;
+          const esFalta = monto > 0;
+          const tono = esOk ? "g" : esFalta ? "red" : "blue";
+          return (
+            <div className={`mb-4 flex items-center gap-2.5 rounded-[10px] px-3.5 py-2.5 border-2 ${esOk ? "bg-g50 border-g200" : esFalta ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"}`}>
+              <i className={`ti ${esOk ? "ti-check" : "ti-scale"} text-[18px] ${tono === "g" ? "text-g700" : tono === "red" ? "text-red-600" : "text-blue-600"}`} />
+              <span className={`text-[13px] font-semibold ${tono === "g" ? "text-g800" : tono === "red" ? "text-red-700" : "text-blue-700"}`}>
+                {esOk
+                  ? "El cadete contó su efectivo y dice que coincide"
+                  : esFalta
+                    ? `El cadete declaró que le FALTAN ${fmtMoneySign(monto)}`
+                    : `El cadete declaró que le SOBRAN ${fmtMoneySign(Math.abs(monto))}`}
+              </span>
+            </div>
+          );
+        })()}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <Metric label="Recaudado total" value={fmtMoneySign(item.totalRecaudado)} sub={`${fmtMoneySign(item.totalEfectivo)} efvo · ${fmtMoneySign(item.totalDigital)} digital`} />
           <Metric label="Gastos declarados" value={fmtMoneySign(item.totalGastos)} sub={`${item.gastos.length} ítem${item.gastos.length !== 1 ? "s" : ""}`} />
@@ -423,15 +447,14 @@ function CadeteCard({ item, onSaved }: { item: RendicionCadete; onSaved: () => v
           )}
         </div>
 
-        {/* Detalle de gastos */}
-        {item.gastos.length > 0 && (
+        {/* Detalle de gastos (sin la declaración del cadete, ya está arriba) */}
+        {gastosSinDeclaracion.length > 0 && (
           <div className="mb-4 rounded-[8px] border border-gy200 bg-gy50 px-3 py-2.5">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-gy500 mb-1.5">Gastos del recorrido</div>
             <div className="flex flex-wrap gap-1.5">
-              {item.gastos.map((g, i) => (
-                <span key={i} className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border ${g.tipo === "diferencia_caja" ? "bg-amber-bg border-amber/40 text-amber-text" : "bg-white border-gy200 text-gy700"}`}>
+              {gastosSinDeclaracion.map((g, i) => (
+                <span key={i} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border bg-white border-gy200 text-gy700">
                   {g.tipo === "retiro_dinero" && <i className="ti ti-cash text-[12px] text-purple-500" />}
-                  {g.tipo === "diferencia_caja" && <i className="ti ti-scale text-[12px]" />}
                   {g.descripcion}: <b>{fmtMoneySign(g.monto)}</b>
                 </span>
               ))}
