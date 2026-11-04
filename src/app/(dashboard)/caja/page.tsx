@@ -94,6 +94,28 @@ export default async function CajaPage({
     for (const p of profs ?? []) nombreResuelvePor.set(p.id, p.nombre);
   }
 
+  // Lo que el propio cadete declaró al contar su efectivo (gasto tipo
+  // diferencia_caja, sellado junto con el resto al validar) — se trae aparte
+  // para poder aclarar en la tabla "Gastos: -$X (incluye sobra caja $X)" en
+  // vez de mostrar ese monto mezclado y sin explicación. Se consulta en
+  // tandas de 200 ids para no armar una URL gigante con .in() si hay miles
+  // de rendiciones revisadas en el rango.
+  const revisadoIds = (revisadosRaw ?? []).map((x) => x.id);
+  const diferenciaPorRendicion = new Map<string, number>();
+  const ID_CHUNK = 200;
+  const chunks = await Promise.all(
+    Array.from({ length: Math.ceil(revisadoIds.length / ID_CHUNK) }, (_, i) =>
+      admin.from("gastos").select("rendicion_id, monto")
+        .eq("tipo", "diferencia_caja")
+        .in("rendicion_id", revisadoIds.slice(i * ID_CHUNK, (i + 1) * ID_CHUNK))
+    )
+  );
+  for (const { data } of chunks) {
+    for (const g of data ?? []) {
+      if (g.rendicion_id) diferenciaPorRendicion.set(g.rendicion_id, Number(g.monto ?? 0));
+    }
+  }
+
   // Agregación por cadete + día operativo: los cadetes rinden la caja con
   // corte diario, así que una caja pendiente de varios días atrás se muestra
   // como una tarjeta por día (no un solo total mezclando todo el rango).
@@ -143,6 +165,7 @@ export default async function CajaPage({
     totalDigital: Number(x.total_digital ?? 0),
     totalGastos: Number(x.total_gastos ?? 0),
     efectivoEsperado: Number(x.efectivo_esperado ?? 0),
+    diferenciaDeclarada: diferenciaPorRendicion.get(x.id) ?? null,
     importeValidado: Number(x.importe_validado ?? 0),
     diferencia: Number(x.diferencia ?? 0),
     estado: x.estado,
