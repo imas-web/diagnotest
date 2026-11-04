@@ -31,6 +31,9 @@ export interface RevisadoRow {
   totalDigital: number;
   totalGastos: number;
   efectivoEsperado: number;
+  // Monto de la declaración "diferencia de caja" del cadete incluida en
+  // totalGastos (negativo = sobra, positivo = falta), o null si no hubo.
+  diferenciaDeclarada: number | null;
   importeValidado: number;
   diferencia: number;
   estado: string;
@@ -279,7 +282,14 @@ function RevisadoTabla({ rows, desde, hasta, onConsultar }: {
                   <td className="px-3.5 py-2.5 text-gy600 whitespace-nowrap">{fmtDia(r.fecha)}</td>
                   <td className="px-3.5 py-2.5">{fmtMoneySign(r.totalRecaudado)}</td>
                   <td className="px-3.5 py-2.5">{fmtMoneySign(r.totalEfectivo)}</td>
-                  <td className="px-3.5 py-2.5">{fmtMoneySign(r.totalGastos)}</td>
+                  <td className="px-3.5 py-2.5">
+                    {fmtMoneySign(r.totalGastos)}
+                    {!!r.diferenciaDeclarada && (
+                      <div className={`text-[10px] font-medium mt-0.5 whitespace-nowrap ${r.diferenciaDeclarada < 0 ? "text-blue-600" : "text-amber-text"}`}>
+                        incluye {r.diferenciaDeclarada < 0 ? "sobra" : "falta"} caja {fmtMoneySign(Math.abs(r.diferenciaDeclarada))}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3.5 py-2.5 font-semibold text-g700">{fmtMoneySign(r.efectivoEsperado)}</td>
                   <td className="px-3.5 py-2.5">{fmtMoneySign(r.importeValidado)}</td>
                   <td className={`px-3.5 py-2.5 font-bold ${r.diferencia < 0 ? "text-red-600" : r.diferencia > 0 ? "text-amber-text" : "text-g700"}`}>
