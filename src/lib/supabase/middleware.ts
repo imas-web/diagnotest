@@ -49,20 +49,37 @@ export async function updateSession(request: NextRequest) {
   // Por eso cada intento tiene un timeout corto (bien por debajo del límite
   // de 25s) y se reintenta una sola vez antes de dejar pasar el request con
   // las cookies actuales, en vez de redirigir a /login de pura mala suerte.
+  // Cuando el access token está por vencer, dos o más requests en paralelo
+  // (cada uno con su propio cliente — no hay forma de coordinarlos entre
+  // requests) intentan refrescarlo con el MISMO refresh token guardado en la
+  // cookie. El primero gana y Supabase le da un token nuevo (rotación); los
+  // demás llegan tarde y Supabase los rechaza con "refresh_token_not_found"
+  // o "refresh_token_already_used" — el usuario sigue logueado de verdad,
+  // perdió la carrera nomás. gotrue-js no tira excepción en ese caso (ver
+  // GoTrueClient._getUser): devuelve { user: null, error } como si no hubiera
+  // sesión, así que sin este chequeo se lo mandaba a /login de pura mala
+  // suerte justo cuando sí estaba logueado.
+  const CODIGOS_CARRERA_REFRESH = new Set(["refresh_token_not_found", "refresh_token_already_used"]);
+
   const cacheKey = authCacheKey(request.cookies.getAll());
   async function getUserSinCortar() {
     const cached = getCachedAuthUser(cacheKey);
     if (cached !== undefined) return cached;
 
-    try {
-      const { data } = await withTimeout(supabase.auth.getUser(), 5000);
+    async function intentar() {
+      const { data, error } = await withTimeout(supabase.auth.getUser(), 5000);
+      if (error && CODIGOS_CARRERA_REFRESH.has((error as { code?: string }).code ?? "")) {
+        return undefined; // perdió la carrera: no cachear, no forzar /login
+      }
       setCachedAuthUser(cacheKey, data.user);
       return data.user;
+    }
+
+    try {
+      return await intentar();
     } catch {
       try {
-        const { data } = await withTimeout(supabase.auth.getUser(), 5000);
-        setCachedAuthUser(cacheKey, data.user);
-        return data.user;
+        return await intentar();
       } catch {
         return undefined; // sigue sin responder: se deja pasar más abajo
       }
