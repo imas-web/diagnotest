@@ -370,7 +370,24 @@ export function MobileHome({ nombre, zonaNombre, personalId, profileId, veterina
       await supabase.from("pedidos_retiro").update({ estado: "resuelto", resuelto_en: nowISO(), retiro_id: id }).eq("id", pedidoId);
     }
 
-    toast("success", "Retiro guardado correctamente ✓");
+    // El trigger de la base (detect_duplicates) puede haber marcado este
+    // retiro como "duplicado_sospechoso" — y esos quedan OCULTOS del propio
+    // resumen del cadete (ver inicio/page.tsx). Sin este chequeo, el toast de
+    // "guardado ✓" salía igual aunque el retiro desapareciera de su lista, y
+    // el cadete terminaba cargándolo de nuevo pensando que había fallado —
+    // lo que a su vez volvía a marcarse como sospechoso (así es como un solo
+    // retiro real terminaba cargado 2 o 3 veces).
+    let marcadoSospechoso = false;
+    if (!confirmadoDup) {
+      const { data: actual } = await supabase.from("retiros").select("estado").eq("id", id).maybeSingle();
+      marcadoSospechoso = actual?.estado === "duplicado_sospechoso";
+    }
+
+    if (marcadoSospechoso) {
+      toast("warning", "Se guardó, pero quedó marcado como posible duplicado de otro retiro de hoy a la misma veterinaria — no lo vuelvas a cargar. Avisale a Preanalítica/Dirección para que lo revisen.");
+    } else {
+      toast("success", "Retiro guardado correctamente ✓");
+    }
     resetRetiro();
     setSavingRetiro(false);
     router.refresh();
