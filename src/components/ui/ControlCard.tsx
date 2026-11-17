@@ -594,7 +594,9 @@ export function ControlCard({ control, tipo, etapa = "obs", usuarioId }: Props) 
               <div className="text-[10px] font-semibold uppercase tracking-wide text-gy400 mb-1 flex items-center gap-1">
                 Control 1
                 {ctrl1 !== "" && ctrl1 === savedCtrl1 && (
-                  <span className="inline-flex items-center gap-0.5 text-g600 normal-case tracking-normal font-medium"><i className="ti ti-check text-[11px]" />guardado</span>
+                  <span className="inline-flex items-center gap-0.5 text-g600 normal-case tracking-normal font-medium">
+                    <i className="ti ti-check text-[11px]" />guardado{responsable1 ? ` · ${responsable1}` : ""}
+                  </span>
                 )}
               </div>
               <select className={`w-full px-2.5 py-1.5 border-2 rounded-[6px] text-[12px] focus:outline-none focus:border-g500 transition-colors ${ctrl1 !== "" && ctrl1 === savedCtrl1 ? "border-g300 bg-g50 text-g700 font-medium" : "border-gy200 bg-gy50"}`}
@@ -608,7 +610,9 @@ export function ControlCard({ control, tipo, etapa = "obs", usuarioId }: Props) 
               <div className="text-[10px] font-semibold uppercase tracking-wide text-gy400 mb-1 flex items-center gap-1">
                 Control 2
                 {ctrl2 !== "" && ctrl2 === savedCtrl2 && (
-                  <span className="inline-flex items-center gap-0.5 text-g600 normal-case tracking-normal font-medium"><i className="ti ti-check text-[11px]" />guardado</span>
+                  <span className="inline-flex items-center gap-0.5 text-g600 normal-case tracking-normal font-medium">
+                    <i className="ti ti-check text-[11px]" />guardado{responsable2 ? ` · ${responsable2}` : ""}
+                  </span>
                 )}
               </div>
               <select className={`w-full px-2.5 py-1.5 border-2 rounded-[6px] text-[12px] focus:outline-none focus:border-g500 transition-colors ${ctrl2 !== "" && ctrl2 === savedCtrl2 ? "border-g300 bg-g50 text-g700 font-medium" : "border-gy200 bg-gy50"}`}
