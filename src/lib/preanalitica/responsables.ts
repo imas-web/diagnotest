@@ -18,6 +18,7 @@ export const RESPONSABLES_PREANALITICA = [
   "Patito",
   "Gabriela",
   "Bruno",
+  "Aimara",
 ] as const;
 
 export const RESPONSABLE_REEMPLAZO = "Reemplazo";
